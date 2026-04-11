@@ -12,11 +12,15 @@ datasource db {
   provider = "postgresql"
 }
 
-
 enum UserRole {
   admin
   staff
   technician
+}
+
+enum TokoStatus {
+  active
+  inactive
 }
 
 enum ServiceStatus {
@@ -40,26 +44,53 @@ enum PaymentStatus {
 // MODELS
 //////////////////////
 
+model Toko {
+  id        String     @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  status    TokoStatus @default(active)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  // Relations - each toko has its own data
+  users             User[]
+  brands            Brand[]
+  hpCatalogs        HpCatalog[]
+  spareparts        Sparepart[]
+  servicePricelists ServicePricelist[]
+  services          Service[]
+
+  @@index([status])
+  @@map("toko")
+}
+
 model User {
-  id            String    @id
+  id            String   @id
   name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String   @unique
+  emailVerified Boolean  @default(false)
   image         String?
   password      String?
-  role          UserRole  @default(staff)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  role          UserRole @default(staff)
+  tokoId        String? // null for admin, required for staff/technician
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Auth relations
-  sessions      Session[]
-  accounts      Account[]
+  sessions Session[]
+  accounts Account[]
+
+  // Toko relation
+  toko Toko? @relation(fields: [tokoId], references: [id])
 
   // Repair shop relations
-  createdServices   Service[] @relation("ServiceCreatedBy")
-  assignedServices  Service[] @relation("ServiceTechnician")
-  serviceLogs       ServiceLog[]
+  createdServices  Service[]    @relation("ServiceCreatedBy")
+  assignedServices Service[]    @relation("ServiceTechnician")
+  serviceLogs      ServiceLog[]
 
+  @@index([tokoId])
+  @@index([role])
   @@map("user")
 }
 
@@ -112,23 +143,34 @@ model Verification {
 }
 
 model Brand {
-  id   String @id @default(uuid())
-  name String @unique
+  id     String @id @default(uuid())
+  name   String
+  tokoId String
 
+  toko       Toko        @relation(fields: [tokoId], references: [id])
   hpCatalogs HpCatalog[]
+
+  @@unique([tokoId, name])
+  @@index([tokoId])
+  @@map("brand")
 }
 
 model HpCatalog {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   brandId     String
+  tokoId      String
   modelName   String
   modelNumber String?
 
-  brand       Brand    @relation(fields: [brandId], references: [id])
-  services    Service[]
+  brand           Brand                    @relation(fields: [brandId], references: [id])
+  toko            Toko                     @relation(fields: [tokoId], references: [id])
+  services        Service[]
   compatibilities SparepartCompatibility[]
 
+  @@unique([tokoId, brandId, modelName])
+  @@index([tokoId])
   @@index([brandId, modelName])
+  @@map("hp_catalog")
 }
 
 model Sparepart {
@@ -136,35 +178,50 @@ model Sparepart {
   name         String
   defaultPrice Int
   isUniversal  Boolean @default(false)
+  tokoId       String
 
+  toko            Toko                     @relation(fields: [tokoId], references: [id])
   compatibilities SparepartCompatibility[]
   serviceItems    ServiceItem[]
+
+  @@unique([tokoId, name])
+  @@index([tokoId])
+  @@map("sparepart")
 }
 
 model SparepartCompatibility {
   hpCatalogId String
   sparepartId String
 
-  hpCatalog   HpCatalog @relation(fields: [hpCatalogId], references: [id])
-  sparepart   Sparepart @relation(fields: [sparepartId], references: [id])
+  hpCatalog HpCatalog @relation(fields: [hpCatalogId], references: [id])
+  sparepart Sparepart @relation(fields: [sparepartId], references: [id])
 
   @@id([hpCatalogId, sparepartId])
+  @@map("sparepart_compatibility")
 }
 
 model ServicePricelist {
   id           String @id @default(uuid())
   title        String
   defaultPrice Int
+  tokoId       String
+
+  toko Toko @relation(fields: [tokoId], references: [id])
+
+  @@unique([tokoId, title])
+  @@index([tokoId])
+  @@map("service_pricelist")
 }
 
 model Service {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  hpCatalogId     String
+  tokoId      String
+  hpCatalogId String
 
   // 👇 role dipisah
-  createdById     String
-  technicianId    String?
+  createdById  String
+  technicianId String?
 
   imei            String?
   customerName    String?
@@ -172,61 +229,67 @@ model Service {
   complaint       String
   passwordPattern String?
 
-  status          ServiceStatus @default(received)
+  status ServiceStatus @default(received)
 
-  checkinAt       DateTime @default(now())
-  assignedAt      DateTime?
-  doneAt          DateTime?
-  checkoutAt      DateTime?
+  checkinAt  DateTime  @default(now())
+  assignedAt DateTime?
+  doneAt     DateTime?
+  checkoutAt DateTime?
 
   // 👇 anti double WA
-  doneNotifiedAt  DateTime?
+  doneNotifiedAt DateTime?
 
-  hpCatalog       HpCatalog @relation(fields: [hpCatalogId], references: [id])
+  toko      Toko      @relation(fields: [tokoId], references: [id])
+  hpCatalog HpCatalog @relation(fields: [hpCatalogId], references: [id])
 
-  createdBy       User  @relation("ServiceCreatedBy", fields: [createdById], references: [id])
-  technician      User? @relation("ServiceTechnician", fields: [technicianId], references: [id])
+  createdBy  User  @relation("ServiceCreatedBy", fields: [createdById], references: [id])
+  technician User? @relation("ServiceTechnician", fields: [technicianId], references: [id])
 
-  items           ServiceItem[]
-  invoice         Invoice?
+  items   ServiceItem[]
+  invoice Invoice?
 
-  logs            ServiceLog[]
-  notifications   NotificationLog[]
+  logs          ServiceLog[]
+  notifications NotificationLog[]
 
+  @@index([tokoId])
   @@index([status])
   @@index([checkinAt])
   @@index([noWa])
   @@index([technicianId])
+  @@map("service")
 }
 
 model ServiceItem {
-  id          String   @id @default(uuid())
-  serviceId   String
+  id        String @id @default(uuid())
+  serviceId String
 
   type        ItemType
   referenceId String?
 
-  name        String
-  qty         Int      @default(1)
-  price       Int
+  name  String
+  qty   Int    @default(1)
+  price Int
 
-  service     Service  @relation(fields: [serviceId], references: [id])
-  sparepart   Sparepart? @relation(fields: [referenceId], references: [id], map: "service_item_sparepart_fk")
+  service   Service    @relation(fields: [serviceId], references: [id])
+  sparepart Sparepart? @relation(fields: [referenceId], references: [id], map: "service_item_sparepart_fk")
 
   @@index([serviceId])
   @@index([type])
+  @@map("service_item")
 }
 
 model Invoice {
-  id            String   @id @default(uuid())
-  serviceId     String   @unique
+  id        String @id @default(uuid())
+  serviceId String @unique
 
   grandTotal    Int
   paymentStatus PaymentStatus @default(unpaid)
   paidAt        DateTime?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime      @default(now())
 
-  service       Service  @relation(fields: [serviceId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@map("invoice")
 }
 
 //////////////////////
@@ -234,34 +297,36 @@ model Invoice {
 //////////////////////
 
 model ServiceLog {
-  id         String   @id @default(uuid())
-  serviceId  String
-  userId     String
+  id        String @id @default(uuid())
+  serviceId String
+  userId    String
 
-  action     String
-  oldValue   String?
-  newValue   String?
+  action   String
+  oldValue String?
+  newValue String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  service    Service @relation(fields: [serviceId], references: [id])
-  user       User    @relation(fields: [userId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
 
   @@index([serviceId])
+  @@map("service_log")
 }
 
 model NotificationLog {
-  id         String   @id @default(uuid())
-  serviceId  String
+  id        String @id @default(uuid())
+  serviceId String
 
-  type       String   // contoh: WA_DONE
-  status     String   // success / failed
+  type   String // contoh: WA_DONE
+  status String // success / failed
 
-  payload    Json?
+  payload Json?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  service    Service @relation(fields: [serviceId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
 
   @@index([serviceId])
+  @@map("notification_log")
 }

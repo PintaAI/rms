@@ -1,6 +1,7 @@
 "use client";
 
-import { useSession, signOut } from "@/lib/auth-client";
+import { useAuth } from "@/components/auth-provider";
+import { signOut } from "@/lib/auth-client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +11,7 @@ import {
 import { RiLogoutBoxRLine, RiUser3Line } from "@remixicon/react";
 
 export function UserInfo() {
-  const { data: session, isPending } = useSession();
+  const { session, isPending } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
