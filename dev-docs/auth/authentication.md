@@ -16,8 +16,13 @@ The authentication system provides:
 ├── lib/
 │   ├── auth.ts              # Server-side auth configuration
 │   ├── auth-client.ts       # Client-side auth client
+│   ├── get-session.ts       # Server-side session helper
 │   └── prisma.ts            # Prisma client instance
+├── components/
+│   ├── auth-provider.tsx    # Auth context provider (wraps app)
+│   └── user-info.tsx        # User info display component
 ├── app/
+│   ├── layout.tsx           # Root layout (wraps with AuthProvider)
 │   └── api/
 │       └── auth/
 │           └── [...all]/
@@ -281,16 +286,14 @@ export function SignOutButton() {
 
 ```tsx
 // app/dashboard/page.tsx
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/get-session";
 import { redirect } from "next/navigation";
 
 export default async function DashboardPage() {
-  const session = await auth.api.getSession({
-    headers: headers(),
-  });
+  const session = await getSession();
 
   if (!session) {
-    redirect("/sign-in");
+    redirect("/auth");
   }
 
   return (
@@ -302,7 +305,29 @@ export default async function DashboardPage() {
 }
 ```
 
-### 7. Protected Route (Middleware)
+### 7. Get User Only (Server Component)
+
+```tsx
+// Get just the user object
+import { getUser } from "@/lib/get-session";
+
+export default async function ProfilePage() {
+  const user = await getUser();
+
+  if (!user) {
+    redirect("/auth");
+  }
+
+  return (
+    <div>
+      <h1>Profile</h1>
+      <p>Welcome, {user.name}</p>
+    </div>
+  );
+}
+```
+
+### 8. Protected Route (Middleware)
 
 Create `middleware.ts` in your project root:
 
@@ -341,6 +366,70 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };
+```
+
+### 9. Using AuthProvider (Recommended)
+
+The `AuthProvider` wraps your app and provides session data via context. This caches the session globally, reducing API calls when multiple components need session data.
+
+First, the provider is already set up in `app/layout.tsx`:
+
+```tsx
+// app/layout.tsx
+import { AuthProvider } from "@/components/auth-provider";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        <ThemeProvider>
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+Then use the `useAuth` hook anywhere in your app:
+
+```tsx
+"use client";
+
+import { useAuth } from "@/components/auth-provider";
+
+export function DashboardHeader() {
+  const { session, isPending } = useAuth();
+
+  if (isPending) return <div>Loading...</div>;
+  if (!session) return null;
+
+  return (
+    <div>
+      <p>Welcome, {session.user.name}</p>
+      <p>Role: {(session.user as any).role}</p>
+    </div>
+  );
+}
+```
+
+Or use the direct `useSession` hook (works without provider):
+
+```tsx
+"use client";
+
+import { useSession } from "@/lib/auth-client";
+
+export function UserAvatar() {
+  const { data: session, isPending } = useSession();
+
+  if (isPending) return <Skeleton />;
+  if (!session) return <LoginButton />;
+
+  return <img src={session.user.image} alt={session.user.name} />;
+}
 ```
 
 ## API Endpoints

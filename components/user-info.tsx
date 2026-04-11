@@ -1,0 +1,69 @@
+"use client";
+
+import { useSession, signOut } from "@/lib/auth-client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { RiLogoutBoxRLine, RiUser3Line } from "@remixicon/react";
+
+export function UserInfo() {
+  const { data: session, isPending } = useSession();
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  if (isPending) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+        <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  const user = session.user;
+  const role = (user as any).role || "staff";
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity outline-none">
+        <div className="flex flex-col items-end">
+          <span className="text-sm font-medium">{user.name || user.email}</span>
+          <span className="text-xs text-muted-foreground capitalize">{role}</span>
+        </div>
+        {user.image ? (
+          <img
+            src={user.image}
+            alt={user.name || "User"}
+            className="h-8 w-8 rounded-full"
+          />
+        ) : (
+          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+            {(user.name || user.email || "?").charAt(0).toUpperCase()}
+          </div>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem className="flex items-center gap-2">
+          <RiUser3Line className="h-4 w-4" />
+          <span>{user.name || user.email}</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={handleSignOut}
+          className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"
+        >
+          <RiLogoutBoxRLine className="h-4 w-4" />
+          <span>Sign out</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

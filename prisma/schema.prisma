@@ -12,18 +12,54 @@ datasource db {
   provider = "postgresql"
 }
 
+
+enum UserRole {
+  admin
+  staff
+  technician
+}
+
+enum ServiceStatus {
+  received
+  repairing
+  done
+  picked_up
+}
+
+enum ItemType {
+  sparepart
+  service
+}
+
+enum PaymentStatus {
+  unpaid
+  paid
+}
+
+//////////////////////
+// MODELS
+//////////////////////
+
 model User {
   id            String    @id
   name          String
-  email         String
+  email         String    @unique
   emailVerified Boolean   @default(false)
   image         String?
+  password      String?
+  role          UserRole  @default(staff)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  // Auth relations
   sessions      Session[]
   accounts      Account[]
 
-  @@unique([email])
+  // Repair shop relations
+  createdServices   Service[] @relation("ServiceCreatedBy")
+  assignedServices  Service[] @relation("ServiceTechnician")
+  serviceLogs       ServiceLog[]
+
   @@map("user")
 }
 
@@ -73,4 +109,159 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+model Brand {
+  id   String @id @default(uuid())
+  name String @unique
+
+  hpCatalogs HpCatalog[]
+}
+
+model HpCatalog {
+  id          String   @id @default(uuid())
+  brandId     String
+  modelName   String
+  modelNumber String?
+
+  brand       Brand    @relation(fields: [brandId], references: [id])
+  services    Service[]
+  compatibilities SparepartCompatibility[]
+
+  @@index([brandId, modelName])
+}
+
+model Sparepart {
+  id           String  @id @default(uuid())
+  name         String
+  defaultPrice Int
+  isUniversal  Boolean @default(false)
+
+  compatibilities SparepartCompatibility[]
+  serviceItems    ServiceItem[]
+}
+
+model SparepartCompatibility {
+  hpCatalogId String
+  sparepartId String
+
+  hpCatalog   HpCatalog @relation(fields: [hpCatalogId], references: [id])
+  sparepart   Sparepart @relation(fields: [sparepartId], references: [id])
+
+  @@id([hpCatalogId, sparepartId])
+}
+
+model ServicePricelist {
+  id           String @id @default(uuid())
+  title        String
+  defaultPrice Int
+}
+
+model Service {
+  id              String   @id @default(uuid())
+
+  hpCatalogId     String
+
+  // 👇 role dipisah
+  createdById     String
+  technicianId    String?
+
+  imei            String?
+  customerName    String?
+  noWa            String
+  complaint       String
+  passwordPattern String?
+
+  status          ServiceStatus @default(received)
+
+  checkinAt       DateTime @default(now())
+  assignedAt      DateTime?
+  doneAt          DateTime?
+  checkoutAt      DateTime?
+
+  // 👇 anti double WA
+  doneNotifiedAt  DateTime?
+
+  hpCatalog       HpCatalog @relation(fields: [hpCatalogId], references: [id])
+
+  createdBy       User  @relation("ServiceCreatedBy", fields: [createdById], references: [id])
+  technician      User? @relation("ServiceTechnician", fields: [technicianId], references: [id])
+
+  items           ServiceItem[]
+  invoice         Invoice?
+
+  logs            ServiceLog[]
+  notifications   NotificationLog[]
+
+  @@index([status])
+  @@index([checkinAt])
+  @@index([noWa])
+  @@index([technicianId])
+}
+
+model ServiceItem {
+  id          String   @id @default(uuid())
+  serviceId   String
+
+  type        ItemType
+  referenceId String?
+
+  name        String
+  qty         Int      @default(1)
+  price       Int
+
+  service     Service  @relation(fields: [serviceId], references: [id])
+  sparepart   Sparepart? @relation(fields: [referenceId], references: [id], map: "service_item_sparepart_fk")
+
+  @@index([serviceId])
+  @@index([type])
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  serviceId     String   @unique
+
+  grandTotal    Int
+  paymentStatus PaymentStatus @default(unpaid)
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+
+  service       Service  @relation(fields: [serviceId], references: [id])
+}
+
+//////////////////////
+// LOGGING & NOTIF
+//////////////////////
+
+model ServiceLog {
+  id         String   @id @default(uuid())
+  serviceId  String
+  userId     String
+
+  action     String
+  oldValue   String?
+  newValue   String?
+
+  createdAt  DateTime @default(now())
+
+  service    Service @relation(fields: [serviceId], references: [id])
+  user       User    @relation(fields: [userId], references: [id])
+
+  @@index([serviceId])
+}
+
+model NotificationLog {
+  id         String   @id @default(uuid())
+  serviceId  String
+
+  type       String   // contoh: WA_DONE
+  status     String   // success / failed
+
+  payload    Json?
+
+  createdAt  DateTime @default(now())
+
+  service    Service @relation(fields: [serviceId], references: [id])
+
+  @@index([serviceId])
 }
