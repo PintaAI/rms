@@ -233,18 +233,12 @@ export default function AdminPage() {
       </div>
 
       {/* Secondary Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <StatCard
           title="Staff & Technicians"
           value={stats.totalUsers}
           description="Active users"
           icon={<RiUserLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Brands"
-          value={stats.totalBrands}
-          description="Phone brands"
-          icon={<RiSmartphoneLine className="h-4 w-4" />}
         />
         <StatCard
           title="Spareparts"

@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { RiDashboardLine, RiToolsLine, RiCalendarLine, RiFileListLine, RiMapPinLine } from "@remixicon/react";
+import { RiDashboardLine, RiToolsLine } from "@remixicon/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -20,24 +20,9 @@ const technicianMenuItems = [
     icon: RiDashboardLine,
   },
   {
-    title: "My Tasks",
+    title: "Tasks / Servisan",
     href: "/dashboard/technician/tasks",
     icon: RiToolsLine,
-  },
-  {
-    title: "Schedule",
-    href: "/dashboard/technician/schedule",
-    icon: RiCalendarLine,
-  },
-  {
-    title: "Work Orders",
-    href: "/dashboard/technician/work-orders",
-    icon: RiFileListLine,
-  },
-  {
-    title: "Locations",
-    href: "/dashboard/technician/locations",
-    icon: RiMapPinLine,
   },
 ];
 

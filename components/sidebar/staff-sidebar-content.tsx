@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { RiDashboardLine, RiCalendarLine, RiFileListLine, RiCustomerServiceLine } from "@remixicon/react";
+import { RiDashboardLine, RiFileListLine } from "@remixicon/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -20,19 +20,9 @@ const staffMenuItems = [
     icon: RiDashboardLine,
   },
   {
-    title: "Appointments",
-    href: "/dashboard/staff/appointments",
-    icon: RiCalendarLine,
-  },
-  {
-    title: "Service Requests",
-    href: "/dashboard/staff/requests",
+    title: "Services",
+    href: "/dashboard/staff/services",
     icon: RiFileListLine,
-  },
-  {
-    title: "Customer Support",
-    href: "/dashboard/staff/support",
-    icon: RiCustomerServiceLine,
   },
 ];
 

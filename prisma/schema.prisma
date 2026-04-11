@@ -55,8 +55,6 @@ model Toko {
 
   // Relations - each toko has its own data
   users             User[]
-  brands            Brand[]
-  hpCatalogs        HpCatalog[]
   spareparts        Sparepart[]
   servicePricelists ServicePricelist[]
   services          Service[]
@@ -142,33 +140,32 @@ model Verification {
   @@map("verification")
 }
 
+// Global Brand model (not toko-specific) - available across all tokos
 model Brand {
-  id     String @id @default(uuid())
-  name   String
-  tokoId String
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  toko       Toko        @relation(fields: [tokoId], references: [id])
   hpCatalogs HpCatalog[]
 
-  @@unique([tokoId, name])
-  @@index([tokoId])
   @@map("brand")
 }
 
+// Global HpCatalog model (not toko-specific) - available across all tokos
 model HpCatalog {
-  id          String  @id @default(uuid())
+  id          String   @id @default(uuid())
   brandId     String
-  tokoId      String
   modelName   String
   modelNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   brand           Brand                    @relation(fields: [brandId], references: [id])
-  toko            Toko                     @relation(fields: [tokoId], references: [id])
   services        Service[]
   compatibilities SparepartCompatibility[]
 
-  @@unique([tokoId, brandId, modelName])
-  @@index([tokoId])
+  @@unique([brandId, modelName])
   @@index([brandId, modelName])
   @@map("hp_catalog")
 }
