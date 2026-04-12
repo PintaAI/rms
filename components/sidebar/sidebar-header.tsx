@@ -104,23 +104,48 @@ export function SidebarHeaderComponent() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // Non-admin: Show current toko info (no dropdown)
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-            >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <RiStore2Line className="size-4" />
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-                <span className="font-semibold">
-                  {isLoading ? "Loading..." : selectedToko?.name || "No Toko Assigned"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {role.charAt(0).toUpperCase() + role.slice(1)}
-                </span>
-              </div>
-            </SidebarMenuButton>
+            // No toko assigned or non-switchable: Show dropdown with manage option
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={isLoading}
+                render={
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                      <RiStore2Line className="size-4" />
+                    </div>
+                    <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
+                      <span className="font-semibold">
+                        {isLoading ? "Loading..." : selectedToko?.name || "No Toko Assigned"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {role.charAt(0).toUpperCase() + role.slice(1)}
+                      </span>
+                    </div>
+                    <RiArrowDownSLine className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+                  </SidebarMenuButton>
+                }
+              />
+              <DropdownMenuContent
+                className="w-[--radix-popper-anchor-width]"
+                align="start"
+              >
+                <DropdownMenuItem
+                  className="gap-3 cursor-pointer"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <RiSettings4Line className="h-4 w-4" />
+                  </div>
+                  <div className="flex flex-col flex-1">
+                    <span className="text-sm font-medium">Manage Toko</span>
+                    <span className="text-xs text-muted-foreground">Go to dashboard to manage</span>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </SidebarMenuItem>
       </SidebarMenu>
