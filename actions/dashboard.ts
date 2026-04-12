@@ -42,6 +42,44 @@ export interface RecentService {
   } | null;
 }
 
+// Extended type for technician tasks with items
+export interface TechnicianTaskService {
+  id: string;
+  customerName: string | null;
+  noWa: string;
+  complaint: string;
+  status: string;
+  checkinAt: Date;
+  doneAt: Date | null;
+  passwordPattern: string | null;
+  imei: string | null;
+  hpCatalog: {
+    modelName: string;
+    brand: {
+      name: string;
+    };
+  };
+  technician: {
+    id: string;
+    name: string;
+  } | null;
+  createdBy: {
+    name: string;
+  };
+  invoice: {
+    id: string;
+    grandTotal: number;
+    paymentStatus: string;
+  } | null;
+  items: Array<{
+    id: string;
+    type: string;
+    name: string;
+    qty: number;
+    price: number;
+  }>;
+}
+
 export interface TokoDashboardData {
   toko: {
     id: string;
@@ -979,7 +1017,7 @@ export interface TechnicianServiceStats {
 export interface TechnicianDashboardData {
   stats: TechnicianServiceStats;
   availableServices: RecentService[];
-  myTasks: RecentService[];
+  myTasks: TechnicianTaskService[];
 }
 
 // Get technician dashboard data
@@ -1122,6 +1160,9 @@ export async function getTechnicianDashboardData(): Promise<{
           complaint: true,
           status: true,
           checkinAt: true,
+          doneAt: true,
+          passwordPattern: true,
+          imei: true,
           hpCatalog: {
             select: {
               modelName: true,
@@ -1148,6 +1189,15 @@ export async function getTechnicianDashboardData(): Promise<{
               id: true,
               grandTotal: true,
               paymentStatus: true,
+            },
+          },
+          items: {
+            select: {
+              id: true,
+              type: true,
+              name: true,
+              qty: true,
+              price: true,
             },
           },
         },

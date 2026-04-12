@@ -37,6 +37,7 @@ import {
   technicianTakeService,
   type TechnicianDashboardData,
   type RecentService,
+  type TechnicianTaskService,
 } from "@/actions/dashboard";
 import { ServiceTaskCard, type ServiceTaskItem } from "@/components/technician/service-task-card";
 import {
@@ -86,7 +87,7 @@ export default function TechnicianPage() {
   const [takingServiceId, setTakingServiceId] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<RecentService | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [selectedTaskService, setSelectedTaskService] = useState<RecentService | null>(null);
+  const [selectedTaskService, setSelectedTaskService] = useState<TechnicianTaskService | null>(null);
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 
   async function fetchDashboardData() {
@@ -144,25 +145,25 @@ export default function TechnicianPage() {
     }
   }
 
-  // Convert RecentService to ServiceTaskItem for ServiceTaskCard
-  function convertToServiceTaskItem(service: RecentService): ServiceTaskItem {
+  // Convert TechnicianTaskService to ServiceTaskItem for ServiceTaskCard
+  function convertToServiceTaskItem(service: TechnicianTaskService): ServiceTaskItem {
     return {
       id: service.id,
       customerName: service.customerName,
       noWa: service.noWa,
       complaint: service.complaint,
-      passwordPattern: null,
-      imei: null,
+      passwordPattern: service.passwordPattern,
+      imei: service.imei,
       status: service.status,
       checkinAt: service.checkinAt,
-      doneAt: null,
+      doneAt: service.doneAt,
       hpCatalog: service.hpCatalog,
-      items: [],
+      items: service.items,
       invoice: service.invoice,
     };
   }
 
-  function handleOpenTaskDetail(service: RecentService) {
+  function handleOpenTaskDetail(service: TechnicianTaskService) {
     setSelectedTaskService(service);
     setIsTaskSheetOpen(true);
   }
@@ -438,13 +439,13 @@ export default function TechnicianPage() {
 
       {/* Task Detail Sheet - Bottom Sheet for My Current Tasks */}
       <Sheet open={isTaskSheetOpen} onOpenChange={(open) => { if (!open) handleCloseTaskDetail(); }}>
-        <SheetContent side="bottom" className=" rounded-t-2xl h-[85vh] sm:max-w-2xl mx-auto overflow-y-auto">
+        <SheetContent side="bottom" className=" rounded-t-4xl  h-[85vh] sm:max-w-2xl mx-auto overflow-y-auto">
           <SheetHeader className="flex items-center">
             <SheetTitle>Task Details</SheetTitle>
           </SheetHeader>
 
           {selectedTaskService && (
-            <div >
+            <div className="px-2 mb-2">
               <ServiceTaskCard
                 task={convertToServiceTaskItem(selectedTaskService)}
                 variant="active"
