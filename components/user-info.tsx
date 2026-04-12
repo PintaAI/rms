@@ -8,9 +8,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RiLogoutBoxRLine, RiUser3Line } from "@remixicon/react";
+import { ModeToggle } from "@/components/theme-toggle";
 
 export function UserInfo() {
   const { session, isPending } = useAuth();
@@ -57,6 +59,12 @@ export function UserInfo() {
           <RiUser3Line className="h-4 w-4" />
           <span>{user.name || user.email}</span>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <span className="text-sm">Theme</span>
+          <ModeToggle />
+        </div>
+        <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={handleSignOut}
           className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"

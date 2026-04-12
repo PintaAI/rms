@@ -4,10 +4,12 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@/components/ui/button"
 
-export function ModeToggle() {
+export function ModeToggle({ onClick }: { onClick?: (e: React.MouseEvent) => void }) {
   const { theme, setTheme } = useTheme()
 
-  const toggleTheme = () => {
+  const toggleTheme = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClick?.(e)
     if (theme === "light") {
       setTheme("dark")
     } else if (theme === "dark") {

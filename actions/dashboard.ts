@@ -29,8 +29,12 @@ export interface RecentService {
     };
   };
   technician: {
+    id: string;
     name: string;
   } | null;
+  createdBy: {
+    name: string;
+  };
 }
 
 export interface TokoDashboardData {
@@ -196,6 +200,12 @@ export async function getTokoDashboardData(tokoId: string): Promise<{
           },
         },
         technician: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        createdBy: {
           select: {
             name: true,
           },
@@ -441,6 +451,12 @@ export async function getStaffDashboardData(): Promise<{
           },
           technician: {
             select: {
+              id: true,
+              name: true,
+            },
+          },
+          createdBy: {
+            select: {
               name: true,
             },
           },
@@ -474,6 +490,12 @@ export async function getStaffDashboardData(): Promise<{
             },
           },
           technician: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          createdBy: {
             select: {
               name: true,
             },
@@ -580,7 +602,7 @@ export async function getStaffServiceList(): Promise<{
             brand: { select: { name: true } },
           },
         },
-        technician: { select: { name: true } },
+        technician: { select: { id: true, name: true } },
         invoice: {
           select: {
             id: true,
@@ -1041,6 +1063,12 @@ export async function getTechnicianDashboardData(): Promise<{
           },
           technician: {
             select: {
+              id: true,
+              name: true,
+            },
+          },
+          createdBy: {
+            select: {
               name: true,
             },
           },
@@ -1072,6 +1100,12 @@ export async function getTechnicianDashboardData(): Promise<{
             },
           },
           technician: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          createdBy: {
             select: {
               name: true,
             },
@@ -1558,5 +1592,147 @@ export async function getTechnicianServicePricelists(): Promise<{
   } catch (error) {
     console.error("Error fetching service pricelists:", error);
     return { success: false, error: "Failed to fetch service pricelists" };
+  }
+}
+
+// Get technicians by toko ID
+export async function getTechniciansByToko(tokoId: string): Promise<{
+  success: boolean;
+  data?: { id: string; name: string; email: string }[];
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, role: true, tokoId: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only admin and staff can view technicians
+    if (user.role !== "admin" && user.role !== "staff") {
+      return { success: false, error: "You don't have permission to view technicians" };
+    }
+
+    // Admin can view any toko's technicians, staff can only view their own toko
+    if (user.role === "staff" && user.tokoId !== tokoId) {
+      return { success: false, error: "You don't have permission to view this toko's technicians" };
+    }
+
+    const technicians = await prisma.user.findMany({
+      where: {
+        tokoId: tokoId,
+        role: "technician",
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+      orderBy: {
+        name: "asc",
+      },
+    });
+
+    return { success: true, data: technicians };
+  } catch (error) {
+    console.error("Error fetching technicians:", error);
+    return { success: false, error: "Failed to fetch technicians" };
+  }
+}
+
+// Assign technician to a service (admin only)
+export async function assignTechnicianToService(
+  serviceId: string,
+  technicianId: string | null
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, role: true, tokoId: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only admin can assign technicians
+    if (user.role !== "admin") {
+      return { success: false, error: "Only admins can assign technicians" };
+    }
+
+    // Get the service to check its toko
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      select: { id: true, tokoId: true, technicianId: true, status: true },
+    });
+
+    if (!service) {
+      return { success: false, error: "Service not found" };
+    }
+
+    // Verify the admin has access to this service's toko
+    if (user.tokoId && user.tokoId !== service.tokoId) {
+      return { success: false, error: "You don't have permission to modify this service" };
+    }
+
+    // If assigning a technician, verify they belong to the same toko
+    if (technicianId) {
+      const technician = await prisma.user.findUnique({
+        where: { id: technicianId },
+        select: { id: true, tokoId: true, role: true },
+      });
+
+      if (!technician || technician.role !== "technician") {
+        return { success: false, error: "Invalid technician" };
+      }
+
+      if (technician.tokoId !== service.tokoId) {
+        return { success: false, error: "Technician does not belong to this toko" };
+      }
+    }
+
+    // Update the service with the new technician
+    await prisma.service.update({
+      where: { id: serviceId },
+      data: {
+        technicianId: technicianId,
+        assignedAt: technicianId ? new Date() : null,
+        status: technicianId && service.status === "received" ? "repairing" : undefined,
+      },
+    });
+
+    // Create a log entry for this action
+    await prisma.serviceLog.create({
+      data: {
+        serviceId: serviceId,
+        userId: user.id,
+        action: technicianId ? "ASSIGN_TECHNICIAN" : "UNASSIGN_TECHNICIAN",
+        oldValue: service.technicianId,
+        newValue: technicianId,
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error assigning technician:", error);
+    return { success: false, error: "Failed to assign technician" };
   }
 }

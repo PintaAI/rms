@@ -6,7 +6,6 @@ import {
   EmptyDescription,
   EmptyMedia,
 } from "@/components/ui/empty";
-import { TokoForm } from "@/components/toko/toko-form";
 import { TokoListClient } from "@/components/toko/toko-list-client";
 import { RiStore2Line } from "@remixicon/react";
 
@@ -16,9 +15,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="container mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex-col items-center">
         <h1 className="text-2xl font-bold">Toko List</h1>
-        <TokoForm />
+        <p className="text-sm text-muted-foreground">
+          Manage your toko and view details.
+        </p>
       </div>
 
       {!result.success && (

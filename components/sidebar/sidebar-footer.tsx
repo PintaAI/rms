@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   SidebarFooter,
   SidebarMenu,
@@ -12,16 +13,20 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/auth-provider";
 import { signOut } from "@/lib/auth-client";
-import { RiLogoutBoxRLine, RiUser3Line, RiArrowUpSLine } from "@remixicon/react";
+import { RiLogoutBoxRLine, RiUser3Line, RiArrowUpSLine, RiPaletteLine, RiBookOpenLine } from "@remixicon/react";
+import { ModeToggle } from "@/components/theme-toggle";
 
 export function SidebarFooterComponent() {
   const { session, isPending } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
+    // Force a full page refresh to clear all client-side state
+    window.location.href = "/auth";
   };
 
   if (isPending) {
@@ -83,15 +88,29 @@ export function SidebarFooterComponent() {
               />
               <DropdownMenuContent
                 side="top"
-                className="w-[--radix-popper-anchor-width]"
+                className="min-w-[200px]"
               >
-                <DropdownMenuItem className="flex items-center gap-2">
+                <DropdownMenuItem className="flex items-center gap-2 h-10">
                   <RiUser3Line className="h-4 w-4" />
                   <span>{user.name || user.email}</span>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="flex items-center gap-2 h-10">
+                  <Link href="/user-documentation" className="flex items-center gap-2 w-full">
+                    <RiBookOpenLine className="h-4 w-4" />
+                    <span>Lihat Panduan</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="flex items-center gap-2 h-10">
+                  <RiPaletteLine className="h-4 w-4" />
+                  <span className="flex-1">Theme</span>
+                  <ModeToggle />
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"
+                  className="flex items-center gap-2 h-10 text-destructive focus:text-destructive cursor-pointer"
                 >
                   <RiLogoutBoxRLine className="h-4 w-4" />
                   <span>Sign out</span>

@@ -325,6 +325,11 @@ export async function deleteSparepart(id: string): Promise<{
       return { success: false, error: "Cannot delete sparepart that is used in services" };
     }
 
+    // Delete compatibilities first (to avoid foreign key constraint violation)
+    await prisma.sparepartCompatibility.deleteMany({
+      where: { sparepartId: id },
+    });
+
     await prisma.sparepart.delete({ where: { id } });
 
     revalidatePath("/dashboard/admin/gudang");

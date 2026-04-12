@@ -20,12 +20,6 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -38,8 +32,6 @@ import {
   type User,
 } from "@/actions/user";
 import {
-  RiUserLine,
-  RiUserSmileLine,
   RiDeleteBinLine,
   RiMailLine,
   RiStore2Line,
@@ -92,8 +84,7 @@ function DeleteDialog({
 
 export default function KaryawanPage() {
   const { selectedToko, isLoading: tokoLoading } = useToko();
-  const [staff, setStaff] = useState<User[]>([]);
-  const [technicians, setTechnicians] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,8 +98,7 @@ export default function KaryawanPage() {
 
   async function fetchData() {
     if (!selectedToko) {
-      setStaff([]);
-      setTechnicians([]);
+      setUsers([]);
       setIsLoading(false);
       return;
     }
@@ -119,8 +109,7 @@ export default function KaryawanPage() {
     try {
       const result = await getUsersByToko(selectedToko.id);
       if (result.success && result.data) {
-        setStaff(result.data.staff);
-        setTechnicians(result.data.technicians);
+        setUsers([...result.data.staff, ...result.data.technicians]);
       } else {
         setError(result.error || "Failed to load users");
       }
@@ -193,7 +182,7 @@ export default function KaryawanPage() {
       <div>
         <h1 className="text-2xl font-bold">{selectedToko.name} Employees</h1>
         <p className="text-muted-foreground">
-          View and manage staff and technicians for this toko
+          View and manage staff and technicians for this toko ({users.length})
         </p>
       </div>
 
@@ -203,141 +192,60 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <Tabs defaultValue="staff">
-        <TabsList>
-          <TabsTrigger value="staff" className="gap-2">
-            <RiUserLine className="h-4 w-4" />
-            Staff ({staff.length})
-          </TabsTrigger>
-          <TabsTrigger value="technicians" className="gap-2">
-            <RiUserSmileLine className="h-4 w-4" />
-            Technicians ({technicians.length})
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Staff Tab */}
-        <TabsContent value="staff">
-          <Card>
-            <CardHeader>
-              <CardTitle>Staff</CardTitle>
-              <CardDescription>
-                Staff members who receive service orders
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {staff.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No staff found for this toko.
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {staff.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">
-                          {user.name}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <RiMailLine className="h-4 w-4 text-muted-foreground" />
-                            {user.email}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">Staff</Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(user.createdAt).toLocaleDateString("id-ID")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => openDeleteDialog(user.id, user.name)}
-                          >
-                            <RiDeleteBinLine className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Technicians Tab */}
-        <TabsContent value="technicians">
-          <Card>
-            <CardHeader>
-              <CardTitle>Technicians</CardTitle>
-              <CardDescription>
-                Technicians who perform repairs
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {technicians.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No technicians found for this toko.
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Joined</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {technicians.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell className="font-medium">
-                          {user.name}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <RiMailLine className="h-4 w-4 text-muted-foreground" />
-                            {user.email}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge>Technician</Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {new Date(user.createdAt).toLocaleDateString("id-ID")}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => openDeleteDialog(user.id, user.name)}
-                          >
-                            <RiDeleteBinLine className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Single Table */}
+      <Card>
+        <CardContent className="p-0">
+          {users.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No employees found for this toko.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">
+                      {user.name}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <RiMailLine className="h-4 w-4 text-muted-foreground" />
+                        {user.email}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={user.role === "technician" ? "default" : "secondary"}>
+                        {user.role === "technician" ? "Technician" : "Staff"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString("id-ID")}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => openDeleteDialog(user.id, user.name)}
+                      >
+                        <RiDeleteBinLine className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Delete Dialog */}
       <DeleteDialog

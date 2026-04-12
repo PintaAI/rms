@@ -21,7 +21,9 @@ import {
 import {
   getTokoDashboardData,
   type TokoDashboardData,
+  type RecentService,
 } from "@/actions/dashboard";
+import { TechnicianAssignmentDialog } from "@/components/admin/technician-assignment-dialog";
 import {
   RiSmartphoneLine,
   RiUserLine,
@@ -32,6 +34,7 @@ import {
   RiPlayCircleLine,
   RiFileList3Line,
   RiStore2Line,
+  RiUserStarLine,
 } from "@remixicon/react";
 
 // Status badge colors
@@ -107,6 +110,34 @@ export default function AdminPage() {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Technician assignment dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedService, setSelectedService] = useState<{
+    id: string;
+    technician: { id: string; name: string } | null;
+  } | null>(null);
+
+  const handleTechnicianClick = (service: RecentService) => {
+    setSelectedService({
+      id: service.id,
+      technician: service.technician
+        ? { id: service.technician.id, name: service.technician.name }
+        : null,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleAssignmentChange = () => {
+    // Refresh dashboard data after assignment
+    if (selectedToko) {
+      getTokoDashboardData(selectedToko.id).then((result) => {
+        if (result.success && result.data) {
+          setDashboardData(result.data);
+        }
+      });
+    }
+  };
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -275,6 +306,7 @@ export default function AdminPage() {
                   <TableHead>Device</TableHead>
                   <TableHead>Complaint</TableHead>
                   <TableHead>Technician</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Check-in</TableHead>
                 </TableRow>
@@ -308,11 +340,25 @@ export default function AdminPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {service.technician?.name || (
-                        <span className="text-muted-foreground">
-                          Unassigned
-                        </span>
-                      )}
+                      <button
+                        onClick={() => handleTechnicianClick(service)}
+                        className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+                      >
+                        {service.technician ? (
+                          <Badge variant="default" className="cursor-pointer">
+                            <RiUserStarLine className="h-3 w-3 mr-1" />
+                            {service.technician.name}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="cursor-pointer">
+                            <RiUserLine className="h-3 w-3 mr-1" />
+                            Unassigned
+                          </Badge>
+                        )}
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      {service.createdBy.name}
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusColors[service.status] || "secondary"}>
@@ -329,6 +375,18 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Technician Assignment Dialog */}
+      {selectedService && selectedToko && (
+        <TechnicianAssignmentDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          serviceId={selectedService.id}
+          tokoId={selectedToko.id}
+          currentTechnician={selectedService.technician}
+          onAssignmentChange={handleAssignmentChange}
+        />
+      )}
     </div>
   );
 }
