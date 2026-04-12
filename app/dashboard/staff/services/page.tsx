@@ -19,19 +19,11 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  getStaffServiceList,
-  type ServiceListItem,
+  getStaffDashboardData,
+  type StaffDashboardData,
 } from "@/actions/dashboard";
 import { AddServiceForm } from "@/components/staff/add-service-form";
-import {
-  RiAddLine,
-  RiFileList3Line,
-  RiTimeLine,
-  RiCheckLine,
-  RiPlayCircleLine,
-  RiCheckboxCircleLine,
-  RiMoreLine,
-} from "@remixicon/react";
+import { RiAddLine, RiMoreLine, RiRefreshLine } from "@remixicon/react";
 
 // Status badge colors
 const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -77,48 +69,34 @@ function formatCurrency(value: number): string {
 }
 
 export default function StaffServicesPage() {
-  const [services, setServices] = useState<ServiceListItem[]>([]);
+  const [dashboardData, setDashboardData] = useState<StaffDashboardData | null>(
+    null
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const fetchServices = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getStaffServiceList();
+      const result = await getStaffDashboardData();
       if (result.success && result.data) {
-        setServices(result.data);
+        setDashboardData(result.data);
       } else {
-        setError(result.error || "Failed to load services");
+        setError(result.error || "Failed to load data");
       }
     } catch (err) {
-      console.error("Error fetching services:", err);
-      setError("Failed to load services");
+      console.error("Error fetching data:", err);
+      setError("Failed to load data");
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
-
-  // Filter services
-  const filteredServices = services.filter((service) => {
-    if (filter === "all") return true;
-    return service.status === filter;
-  });
-
-  // Calculate stats
-  const stats = {
-    total: services.length,
-    received: services.filter((s) => s.status === "received").length,
-    repairing: services.filter((s) => s.status === "repairing").length,
-    done: services.filter((s) => s.status === "done").length,
-    pickedUp: services.filter((s) => s.status === "picked_up").length,
-  };
+    fetchData();
+  }, [fetchData]);
 
   // Loading state
   if (isLoading) {
@@ -132,7 +110,7 @@ export default function StaffServicesPage() {
         </div>
         <Card>
           <CardContent className="py-10">
-            <div className="text-center text-muted-foreground">Loading services...</div>
+            <div className="text-center text-muted-foreground">Loading recent transactions...</div>
           </CardContent>
         </Card>
       </div>
@@ -150,6 +128,16 @@ export default function StaffServicesPage() {
     );
   }
 
+  if (!dashboardData) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="text-muted-foreground">No data available</div>
+      </div>
+    );
+  }
+
+  const { recentServices } = dashboardData;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -157,7 +145,7 @@ export default function StaffServicesPage() {
         <div>
           <h1 className="text-2xl font-bold">Services</h1>
           <p className="text-muted-foreground">
-            Manage and track all service requests
+            Recent service transactions
           </p>
         </div>
         <Button onClick={() => setDialogOpen(true)}>
@@ -170,129 +158,31 @@ export default function StaffServicesPage() {
       <AddServiceForm
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSuccess={fetchServices}
+        onSuccess={fetchData}
       />
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <RiFileList3Line className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Received
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
-              <RiTimeLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.received}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              In Progress
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <RiPlayCircleLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.repairing}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Done
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-400">
-              <RiCheckLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.done}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Picked Up
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <RiCheckboxCircleLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pickedUp}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter */}
-      <div className="flex gap-2">
-        <Button
-          variant={filter === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("all")}
-        >
-          All
-        </Button>
-        <Button
-          variant={filter === "received" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("received")}
-        >
-          Received
-        </Button>
-        <Button
-          variant={filter === "repairing" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("repairing")}
-        >
-          In Progress
-        </Button>
-        <Button
-          variant={filter === "done" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("done")}
-        >
-          Done
-        </Button>
-        <Button
-          variant={filter === "picked_up" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("picked_up")}
-        >
-          Picked Up
-        </Button>
-      </div>
-
-      {/* Services Table */}
+      {/* Recent Transactions */}
       <Card>
-        <CardHeader>
-          <CardTitle>Service List</CardTitle>
-          <CardDescription>
-            Showing {filteredServices.length} of {services.length} services
-          </CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Recent Transactions</CardTitle>
+            <CardDescription>
+              Latest {recentServices.length} service requests
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={fetchData}
+            disabled={isLoading}
+          >
+            <RiRefreshLine className="h-4 w-4" />
+          </Button>
         </CardHeader>
         <CardContent>
-          {filteredServices.length === 0 ? (
+          {recentServices.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
-              No services found
+              No recent transactions found
             </div>
           ) : (
             <Table>
@@ -310,7 +200,7 @@ export default function StaffServicesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredServices.map((service) => (
+                {recentServices.map((service) => (
                   <TableRow key={service.id}>
                     <TableCell className="font-medium">
                       {service.customerName || "-"}

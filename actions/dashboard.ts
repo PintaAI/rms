@@ -35,6 +35,11 @@ export interface RecentService {
   createdBy: {
     name: string;
   };
+  invoice: {
+    id: string;
+    grandTotal: number;
+    paymentStatus: string;
+  } | null;
 }
 
 export interface TokoDashboardData {
@@ -208,6 +213,13 @@ export async function getTokoDashboardData(tokoId: string): Promise<{
         createdBy: {
           select: {
             name: true,
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            grandTotal: true,
+            paymentStatus: true,
           },
         },
       },
@@ -460,6 +472,13 @@ export async function getStaffDashboardData(): Promise<{
               name: true,
             },
           },
+          invoice: {
+            select: {
+              id: true,
+              grandTotal: true,
+              paymentStatus: true,
+            },
+          },
         },
       }),
       // Today's services
@@ -498,6 +517,13 @@ export async function getStaffDashboardData(): Promise<{
           createdBy: {
             select: {
               name: true,
+            },
+          },
+          invoice: {
+            select: {
+              id: true,
+              grandTotal: true,
+              paymentStatus: true,
             },
           },
         },
@@ -1072,6 +1098,13 @@ export async function getTechnicianDashboardData(): Promise<{
               name: true,
             },
           },
+          invoice: {
+            select: {
+              id: true,
+              grandTotal: true,
+              paymentStatus: true,
+            },
+          },
         },
       }),
       // My current tasks (assigned to me, not done yet)
@@ -1108,6 +1141,13 @@ export async function getTechnicianDashboardData(): Promise<{
           createdBy: {
             select: {
               name: true,
+            },
+          },
+          invoice: {
+            select: {
+              id: true,
+              grandTotal: true,
+              paymentStatus: true,
             },
           },
         },

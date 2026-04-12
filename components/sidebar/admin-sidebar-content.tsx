@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { RiDashboardLine, RiBarChart2Line , RiTeamLine,  RiFileListLine } from "@remixicon/react";
+import { RiDashboardLine, RiBarChart2Line , RiTeamLine,  RiFileListLine, RiStore2Line } from "@remixicon/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -29,7 +29,11 @@ const adminMenuItems = [
     href: "/dashboard/admin/inventory",
     icon: RiFileListLine,
   },
-
+  {
+    title: "Kelola Toko",
+    href: "/dashboard/admin/toko",
+    icon: RiStore2Line,
+  },
 ];
 
 export function AdminSidebarContent() {

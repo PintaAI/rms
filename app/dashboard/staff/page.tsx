@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Card,
   CardHeader,
@@ -9,6 +9,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableHeader,
@@ -18,16 +19,18 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
-  getStaffDashboardData,
-  type StaffDashboardData,
+  getStaffServiceList,
+  type ServiceListItem,
 } from "@/actions/dashboard";
+import { AddServiceForm } from "@/components/staff/add-service-form";
 import {
-  RiSmartphoneLine,
+  RiAddCircleLine,
+  RiFileList3Line,
   RiTimeLine,
   RiCheckLine,
   RiPlayCircleLine,
-  RiFileList3Line,
   RiCheckboxCircleLine,
+  RiMoreLine,
 } from "@remixicon/react";
 
 // Status badge colors
@@ -46,34 +49,11 @@ const statusLabels: Record<string, string> = {
   picked_up: "Picked Up",
 };
 
-// Stat Card Component
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  description?: string;
-  icon: React.ReactNode;
-}
-
-function StatCard({ title, value, description, icon }: StatCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+// Payment status colors
+const paymentStatusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  unpaid: "destructive",
+  paid: "default",
+};
 
 // Format date
 function formatDate(date: Date): string {
@@ -86,56 +66,80 @@ function formatDate(date: Date): string {
   }).format(new Date(date));
 }
 
+// Format currency
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 export default function StaffPage() {
-  const [dashboardData, setDashboardData] = useState<StaffDashboardData | null>(
-    null
-  );
+  const [services, setServices] = useState<ServiceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAddService, setShowAddService] = useState(false);
+  const [filter, setFilter] = useState<string>("all");
+
+  const fetchServices = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await getStaffServiceList();
+      if (result.success && result.data) {
+        setServices(result.data);
+      } else {
+        setError(result.error || "Failed to load services");
+      }
+    } catch (err) {
+      console.error("Error fetching services:", err);
+      setError("Failed to load services");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchDashboardData() {
-      setIsLoading(true);
-      setError(null);
+    fetchServices();
+  }, [fetchServices]);
 
-      try {
-        const result = await getStaffDashboardData();
-        if (result.success && result.data) {
-          setDashboardData(result.data);
-        } else {
-          setError(result.error || "Failed to load dashboard data");
-        }
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-        setError("Failed to load dashboard data");
-      } finally {
-        setIsLoading(false);
-      }
-    }
+  const handleServiceCreated = useCallback(() => {
+    fetchServices();
+  }, [fetchServices]);
 
-    fetchDashboardData();
-  }, []);
+  // Filter services
+  const filteredServices = services.filter((service) => {
+    if (filter === "all") return true;
+    return service.status === filter;
+  });
+
+  // Calculate stats
+  const stats = {
+    total: services.length,
+    received: services.filter((s) => s.status === "received").length,
+    repairing: services.filter((s) => s.status === "repairing").length,
+    done: services.filter((s) => s.status === "done").length,
+    pickedUp: services.filter((s) => s.status === "picked_up").length,
+  };
 
   // Loading state
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div>
-          <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-          <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="h-8 w-48 bg-muted rounded animate-pulse" />
+            <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
+          </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <div className="h-4 w-24 bg-muted rounded animate-pulse" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 w-16 bg-muted rounded animate-pulse" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <Card>
+          <CardContent className="py-10">
+            <div className="text-center text-muted-foreground">Loading services...</div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -151,123 +155,149 @@ export default function StaffPage() {
     );
   }
 
-  if (!dashboardData) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="text-muted-foreground">No data available</div>
-      </div>
-    );
-  }
-
-  const { stats, todayServices, recentServices } = dashboardData;
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Staff Dashboard</h1>
-        <p className="text-muted-foreground">
-          Overview of your service activities
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Staff Dashboard</h1>
+          <p className="text-muted-foreground">
+            Overview of your service activities
+          </p>
+        </div>
+        <Button onClick={() => setShowAddService(true)}>
+          <RiAddCircleLine className="h-4 w-4 mr-2" />
+          Add Service
+        </Button>
       </div>
+
+      {/* Add Service Dialog */}
+      <AddServiceForm
+        open={showAddService}
+        onOpenChange={setShowAddService}
+        onSuccess={handleServiceCreated}
+      />
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          title="Total Services"
-          value={stats.totalServices}
-          icon={<RiFileList3Line className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Received"
-          value={stats.receivedCount}
-          description="Waiting to be processed"
-          icon={<RiTimeLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="In Progress"
-          value={stats.repairingCount}
-          description="Currently being repaired"
-          icon={<RiPlayCircleLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Done"
-          value={stats.doneCount}
-          description="Ready for pickup"
-          icon={<RiCheckLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Picked Up"
-          value={stats.pickedUpCount}
-          description="Completed"
-          icon={<RiCheckboxCircleLine className="h-4 w-4" />}
-        />
+      <div className="grid gap-4 md:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <RiFileList3Line className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.total}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Received
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
+              <RiTimeLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.received}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              In Progress
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+              <RiPlayCircleLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.repairing}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Done
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-400">
+              <RiCheckLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.done}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Picked Up
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+              <RiCheckboxCircleLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.pickedUp}</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Today's Services */}
+      {/* Filter */}
+      <div className="flex gap-2">
+        <Button
+          variant={filter === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("all")}
+        >
+          All
+        </Button>
+        <Button
+          variant={filter === "received" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("received")}
+        >
+          Received
+        </Button>
+        <Button
+          variant={filter === "repairing" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("repairing")}
+        >
+          In Progress
+        </Button>
+        <Button
+          variant={filter === "done" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("done")}
+        >
+          Done
+        </Button>
+        <Button
+          variant={filter === "picked_up" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("picked_up")}
+        >
+          Picked Up
+        </Button>
+      </div>
+
+      {/* Service List Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Today's Services</CardTitle>
+          <CardTitle>Service List</CardTitle>
           <CardDescription>
-            Services received today: {todayServices.length}
+            Showing {filteredServices.length} of {services.length} services
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {todayServices.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              No services received today
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {todayServices.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell className="font-medium">
-                      {service.customerName || "-"}
-                    </TableCell>
-                    <TableCell>{service.noWa}</TableCell>
-                    <TableCell>
-                      {service.hpCatalog.brand.name} {service.hpCatalog.modelName}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {service.complaint}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[service.status] || "outline"}>
-                        {statusLabels[service.status] || service.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recent Services */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Services</CardTitle>
-          <CardDescription>Latest service requests</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentServices.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              No services yet
+          {filteredServices.length === 0 ? (
+            <div className="text-center py-10 text-muted-foreground">
+              No services found
             </div>
           ) : (
             <Table>
@@ -279,11 +309,13 @@ export default function StaffPage() {
                   <TableHead>Complaint</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Technician</TableHead>
+                  <TableHead>Invoice</TableHead>
                   <TableHead>Check-in</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentServices.map((service) => (
+                {filteredServices.map((service) => (
                   <TableRow key={service.id}>
                     <TableCell className="font-medium">
                       {service.customerName || "-"}
@@ -303,8 +335,30 @@ export default function StaffPage() {
                     <TableCell>
                       {service.technician?.name || "-"}
                     </TableCell>
+                    <TableCell>
+                      {service.invoice ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">
+                            {formatCurrency(service.invoice.grandTotal)}
+                          </span>
+                          <Badge
+                            variant={paymentStatusColors[service.invoice.paymentStatus] || "outline"}
+                            className="w-fit mt-1"
+                          >
+                            {service.invoice.paymentStatus}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatDate(service.checkinAt)}
+                    </TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon">
+                        <RiMoreLine className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

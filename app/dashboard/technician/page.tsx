@@ -19,18 +19,28 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   getTechnicianDashboardData,
   technicianTakeService,
   type TechnicianDashboardData,
+  type RecentService,
 } from "@/actions/dashboard";
 import {
   RiSmartphoneLine,
-  RiTimeLine,
-  RiCheckLine,
-  RiPlayCircleLine,
-  RiFileList3Line,
-  RiCheckboxCircleLine,
   RiToolsLine,
+  RiUserLine,
+  RiPhoneLine,
+  RiCellphoneLine,
+  RiChatQuoteLine,
+  RiTimeLine,
+  RiUserStarLine,
 } from "@remixicon/react";
 
 // Status badge colors
@@ -48,35 +58,6 @@ const statusLabels: Record<string, string> = {
   done: "Done",
   picked_up: "Picked Up",
 };
-
-// Stat Card Component
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  description?: string;
-  icon: React.ReactNode;
-}
-
-function StatCard({ title, value, description, icon }: StatCardProps) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-          {icon}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-1">{description}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 // Format date
 function formatDate(date: Date): string {
@@ -96,6 +77,8 @@ export default function TechnicianPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [takingServiceId, setTakingServiceId] = useState<string | null>(null);
+  const [selectedService, setSelectedService] = useState<RecentService | null>(null);
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
 
   async function fetchDashboardData() {
     setIsLoading(true);
@@ -120,11 +103,25 @@ export default function TechnicianPage() {
     fetchDashboardData();
   }, []);
 
-  async function handleTakeService(serviceId: string) {
-    setTakingServiceId(serviceId);
+  function handleOpenDetail(service: RecentService) {
+    setSelectedService(service);
+    setIsDetailDialogOpen(true);
+  }
+
+  function handleCloseDetail() {
+    if (takingServiceId) return; // Don't close while taking
+    setIsDetailDialogOpen(false);
+    setSelectedService(null);
+  }
+
+  async function handleConfirmTake() {
+    if (!selectedService) return;
+    setTakingServiceId(selectedService.id);
     try {
-      const result = await technicianTakeService(serviceId);
+      const result = await technicianTakeService(selectedService.id);
       if (result.success) {
+        setIsDetailDialogOpen(false);
+        setSelectedService(null);
         // Refresh dashboard data
         await fetchDashboardData();
       } else {
@@ -145,18 +142,6 @@ export default function TechnicianPage() {
         <div>
           <div className="h-8 w-48 bg-muted rounded animate-pulse" />
           <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <div className="h-4 w-24 bg-muted rounded animate-pulse" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 w-16 bg-muted rounded animate-pulse" />
-              </CardContent>
-            </Card>
-          ))}
         </div>
       </div>
     );
@@ -181,7 +166,7 @@ export default function TechnicianPage() {
     );
   }
 
-  const { stats, availableServices, myTasks } = dashboardData;
+  const { availableServices, myTasks } = dashboardData;
 
   return (
     <div className="space-y-6">
@@ -191,34 +176,6 @@ export default function TechnicianPage() {
         <p className="text-muted-foreground">
           Overview of your repair tasks and available services
         </p>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Available Services"
-          value={stats.availableCount}
-          description="Waiting to be taken"
-          icon={<RiTimeLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="My Tasks"
-          value={stats.inProgressCount}
-          description="Currently in progress"
-          icon={<RiPlayCircleLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Completed"
-          value={stats.doneCount}
-          description="Done or picked up"
-          icon={<RiCheckLine className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Total Assigned"
-          value={stats.totalAssigned}
-          description="All services assigned to you"
-          icon={<RiFileList3Line className="h-4 w-4" />}
-        />
       </div>
 
       {/* Available Services */}
@@ -268,10 +225,9 @@ export default function TechnicianPage() {
                     <TableCell className="text-right">
                       <Button
                         size="sm"
-                        onClick={() => handleTakeService(service.id)}
-                        disabled={takingServiceId === service.id}
+                        onClick={() => handleOpenDetail(service)}
                       >
-                        {takingServiceId === service.id ? "Taking..." : "Take"}
+                        Take
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -338,6 +294,106 @@ export default function TechnicianPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Service Detail Dialog */}
+      <Dialog open={isDetailDialogOpen} onOpenChange={(open) => { if (!open) handleCloseDetail(); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Service Detail</DialogTitle>
+            <DialogDescription>
+              Review the service details before taking this task.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedService && (
+            <div className="space-y-4">
+              {/* Customer */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiUserLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Customer</p>
+                  <p className="font-medium">{selectedService.customerName || "-"}</p>
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiPhoneLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">WhatsApp</p>
+                  <p className="font-medium">{selectedService.noWa}</p>
+                </div>
+              </div>
+
+              {/* Device */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiCellphoneLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Device</p>
+                  <p className="font-medium">
+                    {selectedService.hpCatalog.brand.name} {selectedService.hpCatalog.modelName}
+                  </p>
+                </div>
+              </div>
+
+              {/* Complaint */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiChatQuoteLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Complaint</p>
+                  <p className="font-medium whitespace-pre-wrap">{selectedService.complaint}</p>
+                </div>
+              </div>
+
+              {/* Check-in Time */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiTimeLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Check-in Time</p>
+                  <p className="font-medium">{formatDate(selectedService.checkinAt)}</p>
+                </div>
+              </div>
+
+              {/* Created By */}
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary">
+                  <RiUserStarLine className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">Created By</p>
+                  <p className="font-medium">{selectedService.createdBy.name}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseDetail}
+              disabled={!!takingServiceId}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmTake}
+              disabled={!!takingServiceId}
+            >
+              {takingServiceId ? "Taking..." : "Confirm Take"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
