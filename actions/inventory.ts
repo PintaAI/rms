@@ -10,6 +10,7 @@ export type Sparepart = {
   id: string;
   name: string;
   defaultPrice: number;
+  stock: number;
   isUniversal: boolean;
   tokoId: string;
 };
@@ -38,6 +39,7 @@ export type SparepartWithCompatibilities = Sparepart & {
 const createSparepartSchema = z.object({
   name: z.string().min(1, "Name is required"),
   defaultPrice: z.number().int().min(0, "Price must be 0 or greater"),
+  stock: z.number().int().min(0, "Stock must be 0 or greater").optional(),
   isUniversal: z.boolean().optional(),
   tokoId: z.string(),
   hpCatalogIds: z.array(z.string()).optional(), // Compatible device models
@@ -47,6 +49,7 @@ const updateSparepartSchema = z.object({
   id: z.string(),
   name: z.string().min(1, "Name is required").optional(),
   defaultPrice: z.number().int().min(0, "Price must be 0 or greater").optional(),
+  stock: z.number().int().min(0, "Stock must be 0 or greater").optional(),
   isUniversal: z.boolean().optional(),
   hpCatalogIds: z.array(z.string()).optional(), // Compatible device models
 });
@@ -154,6 +157,7 @@ export async function createSparepart(data: z.infer<typeof createSparepartSchema
       data: {
         name: validatedData.name,
         defaultPrice: validatedData.defaultPrice,
+        stock: validatedData.stock ?? 0,
         isUniversal: validatedData.isUniversal ?? false,
         tokoId: validatedData.tokoId,
         // Create compatibilities if hpCatalogIds provided
@@ -247,6 +251,7 @@ export async function updateSparepart(data: z.infer<typeof updateSparepartSchema
       data: {
         name: validatedData.name,
         defaultPrice: validatedData.defaultPrice,
+        stock: validatedData.stock,
         isUniversal: validatedData.isUniversal,
         // Sync compatibilities if hpCatalogIds provided
         ...(validatedData.hpCatalogIds && {

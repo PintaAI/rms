@@ -49,6 +49,7 @@ export function SparepartFormDialog({
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [defaultPrice, setDefaultPrice] = useState("");
+  const [stock, setStock] = useState("");
   const [isUniversal, setIsUniversal] = useState(false);
 
   // Device compatibility state
@@ -83,6 +84,7 @@ export function SparepartFormDialog({
     if (sparepart) {
       setName(sparepart.name);
       setDefaultPrice(sparepart.defaultPrice.toString());
+      setStock(sparepart.stock.toString());
       setIsUniversal(sparepart.isUniversal);
       // Initialize selected devices from existing compatibilities
       setSelectedDevices(
@@ -95,6 +97,7 @@ export function SparepartFormDialog({
     } else {
       setName("");
       setDefaultPrice("");
+      setStock("");
       setIsUniversal(false);
       setSelectedDevices([]);
     }
@@ -273,6 +276,13 @@ export function SparepartFormDialog({
         return;
       }
 
+      const stockValue = parseInt(stock, 10);
+      if (isNaN(stockValue) || stockValue < 0) {
+        setError("Stock must be a valid number");
+        setIsLoading(false);
+        return;
+      }
+
       const hpCatalogIds = selectedDevices.map((d) => d.id);
 
       // If no devices selected, default to universal
@@ -284,6 +294,7 @@ export function SparepartFormDialog({
           id: sparepart.id,
           name,
           defaultPrice: price,
+          stock: stockValue,
           isUniversal: finalIsUniversal,
           hpCatalogIds,
         });
@@ -291,6 +302,7 @@ export function SparepartFormDialog({
         result = await createSparepart({
           name,
           defaultPrice: price,
+          stock: stockValue,
           isUniversal: finalIsUniversal,
           tokoId,
           hpCatalogIds,
@@ -342,6 +354,18 @@ export function SparepartFormDialog({
                 type="number"
                 value={defaultPrice}
                 onChange={(e) => setDefaultPrice(e.target.value)}
+                placeholder="0"
+                min="0"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stock">Stock</Label>
+              <Input
+                id="stock"
+                type="number"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
                 placeholder="0"
                 min="0"
                 required

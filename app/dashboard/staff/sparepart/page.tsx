@@ -250,6 +250,7 @@ export default function StaffSparepartPage() {
                 <TableRow>
                   <TableHead>Nama</TableHead>
                   <TableHead>Harga Default</TableHead>
+                  <TableHead>Stok</TableHead>
                   <TableHead>Tipe</TableHead>
                   <TableHead>Perangkat Kompatibel</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
@@ -263,6 +264,11 @@ export default function StaffSparepartPage() {
                     </TableCell>
                     <TableCell>
                       {formatCurrency(sparepart.defaultPrice)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
+                        {sparepart.stock}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge

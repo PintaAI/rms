@@ -28,7 +28,7 @@ interface AddRepairItemFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   serviceId: string;
-  spareparts: Array<{ id: string; name: string; defaultPrice: number }>;
+  spareparts: Array<{ id: string; name: string; defaultPrice: number; stock: number }>;
   servicePricelists: Array<{ id: string; title: string; defaultPrice: number }>;
   onSuccess: () => void;
   onError: (error: string) => void;
@@ -199,12 +199,15 @@ export function AddRepairItemForm({
                     <button
                       key={sp.id}
                       type="button"
-                      onClick={() => handleSparepartSelect(sp.id)}
+                      onClick={() => sp.stock > 0 && handleSparepartSelect(sp.id)}
+                      disabled={sp.stock <= 0}
                       className={cn(
                         "group relative flex flex-col items-start p-3 rounded-lg border-2 text-left transition-all",
-                        selectedSparepartId === sp.id
-                          ? "border-primary bg-primary/10"
-                          : "border-muted bg-background hover:border-muted-foreground/50 hover:bg-muted/30"
+                        sp.stock <= 0
+                          ? "border-muted bg-muted/30 opacity-50 cursor-not-allowed"
+                          : selectedSparepartId === sp.id
+                            ? "border-primary bg-primary/10"
+                            : "border-muted bg-background hover:border-muted-foreground/50 hover:bg-muted/30"
                       )}
                     >
                       {/* Selection indicator */}
@@ -218,16 +221,30 @@ export function AddRepairItemForm({
                       
                       <span className={cn(
                         "text-sm font-medium line-clamp-1",
-                        selectedSparepartId === sp.id ? "text-primary" : "text-foreground"
+                        sp.stock <= 0
+                          ? "text-muted-foreground"
+                          : selectedSparepartId === sp.id
+                            ? "text-primary"
+                            : "text-foreground"
                       )}>
                         {sp.name}
                       </span>
-                      <span className={cn(
-                        "text-xs mt-1",
-                        selectedSparepartId === sp.id ? "text-primary/70" : "text-muted-foreground"
-                      )}>
-                        {formatCurrency(sp.defaultPrice)}
-                      </span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={cn(
+                          "text-xs",
+                          selectedSparepartId === sp.id ? "text-primary/70" : "text-muted-foreground"
+                        )}>
+                          {formatCurrency(sp.defaultPrice)}
+                        </span>
+                        <span className={cn(
+                          "text-xs px-1.5 py-0.5 rounded",
+                          sp.stock > 0
+                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        )}>
+                          {sp.stock <= 0 ? "Out of stock" : `Stok: ${sp.stock}`}
+                        </span>
+                      </div>
                     </button>
                   ))}
                 </div>

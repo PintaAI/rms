@@ -1510,17 +1510,51 @@ export async function addServiceItem(data: {
       return { success: false, error: "You are not assigned to this service" };
     }
 
-    // Create service item
-    await prisma.serviceItem.create({
-      data: {
-        serviceId: data.serviceId,
-        type: data.type,
-        name: data.name,
-        qty: data.qty,
-        price: data.price,
-        referenceId: data.sparepartId || null,
-      },
-    });
+    // If sparepart type, check and deduct stock
+    if (data.type === "sparepart" && data.sparepartId) {
+      const sparepart = await prisma.sparepart.findUnique({
+        where: { id: data.sparepartId },
+        select: { stock: true },
+      });
+
+      if (!sparepart) {
+        return { success: false, error: "Sparepart not found" };
+      }
+
+      if (sparepart.stock < data.qty) {
+        return { success: false, error: `Insufficient stock. Available: ${sparepart.stock}` };
+      }
+
+      // Create service item and deduct stock in a transaction
+      await prisma.$transaction([
+        prisma.serviceItem.create({
+          data: {
+            serviceId: data.serviceId,
+            type: data.type,
+            name: data.name,
+            qty: data.qty,
+            price: data.price,
+            referenceId: data.sparepartId,
+          },
+        }),
+        prisma.sparepart.update({
+          where: { id: data.sparepartId },
+          data: { stock: { decrement: data.qty } },
+        }),
+      ]);
+    } else {
+      // Create service item (non-sparepart)
+      await prisma.serviceItem.create({
+        data: {
+          serviceId: data.serviceId,
+          type: data.type,
+          name: data.name,
+          qty: data.qty,
+          price: data.price,
+          referenceId: data.sparepartId || null,
+        },
+      });
+    }
 
     return { success: true };
   } catch (error) {
@@ -1558,6 +1592,9 @@ export async function removeServiceItem(itemId: string): Promise<{
       where: { id: itemId },
       select: {
         id: true,
+        type: true,
+        qty: true,
+        referenceId: true,
         service: {
           select: { technicianId: true },
         },
@@ -1572,9 +1609,22 @@ export async function removeServiceItem(itemId: string): Promise<{
       return { success: false, error: "You are not assigned to this service" };
     }
 
-    await prisma.serviceItem.delete({
-      where: { id: itemId },
-    });
+    // If sparepart type, restore stock
+    if (item.type === "sparepart" && item.referenceId) {
+      await prisma.$transaction([
+        prisma.serviceItem.delete({
+          where: { id: itemId },
+        }),
+        prisma.sparepart.update({
+          where: { id: item.referenceId },
+          data: { stock: { increment: item.qty } },
+        }),
+      ]);
+    } else {
+      await prisma.serviceItem.delete({
+        where: { id: itemId },
+      });
+    }
 
     return { success: true };
   } catch (error) {
@@ -1590,6 +1640,7 @@ export async function getTechnicianSpareparts(): Promise<{
     id: string;
     name: string;
     defaultPrice: number;
+    stock: number;
   }>;
   error?: string;
 }> {
@@ -1624,6 +1675,7 @@ export async function getTechnicianSpareparts(): Promise<{
         id: true,
         name: true,
         defaultPrice: true,
+        stock: true,
       },
     });
 

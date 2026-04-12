@@ -156,7 +156,7 @@ export function ServiceTaskCard({
 
   // Add item dialog state
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
-  const [spareparts, setSpareparts] = useState<Array<{ id: string; name: string; defaultPrice: number }>>([]);
+  const [spareparts, setSpareparts] = useState<Array<{ id: string; name: string; defaultPrice: number; stock: number }>>([]);
   const [servicePricelists, setServicePricelists] = useState<Array<{ id: string; title: string; defaultPrice: number }>>([]);
 
   // Fetch spareparts and pricelists

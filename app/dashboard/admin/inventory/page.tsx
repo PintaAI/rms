@@ -416,6 +416,7 @@ export default function InventoryPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Default Price</TableHead>
+                      <TableHead>Stock</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Compatible Devices</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -429,6 +430,11 @@ export default function InventoryPage() {
                         </TableCell>
                         <TableCell>
                           {formatCurrency(sparepart.defaultPrice)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
+                            {sparepart.stock}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           <Badge variant={sparepart.isUniversal ? "default" : "secondary"}>
