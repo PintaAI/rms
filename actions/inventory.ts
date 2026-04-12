@@ -181,6 +181,7 @@ export async function createSparepart(data: z.infer<typeof createSparepartSchema
     });
 
     revalidatePath("/dashboard/admin/inventory");
+    revalidatePath("/dashboard/staff/sparepart");
     return { success: true, data: sparepart };
   } catch (error) {
     console.error("Error creating sparepart:", error);
@@ -275,6 +276,7 @@ export async function updateSparepart(data: z.infer<typeof updateSparepartSchema
     });
 
     revalidatePath("/dashboard/admin/inventory");
+    revalidatePath("/dashboard/staff/sparepart");
     return { success: true, data: updatedSparepart };
   } catch (error) {
     console.error("Error updating sparepart:", error);
@@ -333,6 +335,7 @@ export async function deleteSparepart(id: string): Promise<{
     await prisma.sparepart.delete({ where: { id } });
 
     revalidatePath("/dashboard/admin/gudang");
+    revalidatePath("/dashboard/staff/sparepart");
     return { success: true };
   } catch (error) {
     console.error("Error deleting sparepart:", error);
