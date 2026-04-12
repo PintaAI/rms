@@ -12,7 +12,7 @@ import { RiStore2Line } from "@remixicon/react";
 export default async function DashboardPage() {
   const result = await getAllToko();
   const tokoList = result.success ? result.data : [];
-
+//note: disini cuma bisa di akses sama admin untuk CRUD toko sama nambag staff
   return (
     <div className="container mx-auto">
       <div className="flex-col items-center">
