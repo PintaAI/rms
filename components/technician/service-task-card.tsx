@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -28,12 +28,26 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   RiAddLine,
   RiDeleteBinLine,
   RiPlayCircleLine,
   RiLockLine,
 } from "@remixicon/react";
 import { PatternLock } from "@/components/pattern-lock";
+import {
+  updateServiceStatus,
+  removeServiceItem,
+  getTechnicianSpareparts,
+  getTechnicianServicePricelists,
+} from "@/actions/dashboard";
+import { AddRepairItemForm } from "@/components/technician/add-repair-item-form";
 
 // Status badge colors
 const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -116,6 +130,7 @@ export interface ServiceTaskCardProps {
   onUpdateStatus?: (taskId: string, currentStatus: string) => void;
   onAddItem?: (task: ServiceTaskItem) => void;
   onRemoveItem?: (itemId: string) => void;
+  onRefresh?: () => void;
 }
 
 export function ServiceTaskCard({
@@ -124,6 +139,7 @@ export function ServiceTaskCard({
   onUpdateStatus,
   onAddItem,
   onRemoveItem,
+  onRefresh,
 }: ServiceTaskCardProps) {
   const isActive = variant === "active";
 
@@ -132,6 +148,75 @@ export function ServiceTaskCard({
   const [savedPattern, setSavedPattern] = useState<number[]>([]);
   const [verifyPattern, setVerifyPattern] = useState<number[]>([]);
   const [patternMatch, setPatternMatch] = useState<boolean | null>(null);
+
+  // Status update dialog state
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [newStatus, setNewStatus] = useState<string>("");
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Add item dialog state
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [spareparts, setSpareparts] = useState<Array<{ id: string; name: string; defaultPrice: number }>>([]);
+  const [servicePricelists, setServicePricelists] = useState<Array<{ id: string; title: string; defaultPrice: number }>>([]);
+
+  // Fetch spareparts and pricelists
+  useEffect(() => {
+    async function fetchData() {
+      const [sparepartsResult, pricelistsResult] = await Promise.all([
+        getTechnicianSpareparts(),
+        getTechnicianServicePricelists(),
+      ]);
+      if (sparepartsResult.success && sparepartsResult.data) {
+        setSpareparts(sparepartsResult.data);
+      }
+      if (pricelistsResult.success && pricelistsResult.data) {
+        setServicePricelists(pricelistsResult.data);
+      }
+    }
+    if (isActive) {
+      fetchData();
+    }
+  }, [isActive]);
+
+  // Handle update status
+  async function handleUpdateStatus() {
+    if (!newStatus) return;
+    setIsUpdatingStatus(true);
+    try {
+      const result = await updateServiceStatus(task.id, newStatus as any);
+      if (result.success) {
+        setStatusDialogOpen(false);
+        onRefresh?.();
+      }
+    } catch (err) {
+      console.error("Error updating status:", err);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }
+
+  // Handle remove item
+  async function handleRemoveItem(itemId: string) {
+    try {
+      const result = await removeServiceItem(itemId);
+      if (result.success) {
+        onRefresh?.();
+      }
+    } catch (err) {
+      console.error("Error removing item:", err);
+    }
+  }
+
+  // Open status dialog
+  function openStatusDialog() {
+    setNewStatus(task.status);
+    setStatusDialogOpen(true);
+  }
+
+  // Open add item dialog
+  function openAddItemDialog() {
+    setItemDialogOpen(true);
+  }
 
   function openPatternDialog() {
     if (task.passwordPattern) {
@@ -185,14 +270,26 @@ export function ServiceTaskCard({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => onUpdateStatus?.(task.id, task.status)}
+                  onClick={() => {
+                    if (onUpdateStatus) {
+                      onUpdateStatus(task.id, task.status);
+                    } else {
+                      openStatusDialog();
+                    }
+                  }}
                 >
                   <RiPlayCircleLine className="h-4 w-4 mr-1" />
                   Update Status
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => onAddItem?.(task)}
+                  onClick={() => {
+                    if (onAddItem) {
+                      onAddItem(task);
+                    } else {
+                      openAddItemDialog();
+                    }
+                  }}
                 >
                   <RiAddLine className="h-4 w-4 mr-1" />
                   Add Item
@@ -425,6 +522,57 @@ export function ServiceTaskCard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Update Status Dialog */}
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Update Service Status</DialogTitle>
+            <DialogDescription>
+              Change the status of this service
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label>New Status</Label>
+              <Select value={newStatus} onValueChange={(value) => value && setNewStatus(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="received">Received</SelectItem>
+                  <SelectItem value="repairing">In Progress</SelectItem>
+                  <SelectItem value="done">Done</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateStatus} disabled={isUpdatingStatus}>
+              {isUpdatingStatus ? "Updating..." : "Update Status"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Item Dialog */}
+      <AddRepairItemForm
+        open={itemDialogOpen}
+        onOpenChange={setItemDialogOpen}
+        serviceId={task.id}
+        spareparts={spareparts}
+        servicePricelists={servicePricelists}
+        onSuccess={() => {
+          setItemDialogOpen(false);
+          onRefresh?.();
+        }}
+        onError={(err) => console.error("Error adding item:", err)}
+      />
     </>
   );
 }

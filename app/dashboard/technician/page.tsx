@@ -19,6 +19,12 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -32,6 +38,7 @@ import {
   type TechnicianDashboardData,
   type RecentService,
 } from "@/actions/dashboard";
+import { ServiceTaskCard, type ServiceTaskItem } from "@/components/technician/service-task-card";
 import {
   RiSmartphoneLine,
   RiToolsLine,
@@ -79,6 +86,8 @@ export default function TechnicianPage() {
   const [takingServiceId, setTakingServiceId] = useState<string | null>(null);
   const [selectedService, setSelectedService] = useState<RecentService | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+  const [selectedTaskService, setSelectedTaskService] = useState<RecentService | null>(null);
+  const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 
   async function fetchDashboardData() {
     setIsLoading(true);
@@ -133,6 +142,34 @@ export default function TechnicianPage() {
     } finally {
       setTakingServiceId(null);
     }
+  }
+
+  // Convert RecentService to ServiceTaskItem for ServiceTaskCard
+  function convertToServiceTaskItem(service: RecentService): ServiceTaskItem {
+    return {
+      id: service.id,
+      customerName: service.customerName,
+      noWa: service.noWa,
+      complaint: service.complaint,
+      passwordPattern: null,
+      imei: null,
+      status: service.status,
+      checkinAt: service.checkinAt,
+      doneAt: null,
+      hpCatalog: service.hpCatalog,
+      items: [],
+      invoice: service.invoice,
+    };
+  }
+
+  function handleOpenTaskDetail(service: RecentService) {
+    setSelectedTaskService(service);
+    setIsTaskSheetOpen(true);
+  }
+
+  function handleCloseTaskDetail() {
+    setIsTaskSheetOpen(false);
+    setSelectedTaskService(null);
   }
 
   // Loading state
@@ -268,7 +305,11 @@ export default function TechnicianPage() {
               </TableHeader>
               <TableBody>
                 {myTasks.map((service) => (
-                  <TableRow key={service.id}>
+                  <TableRow
+                    key={service.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleOpenTaskDetail(service)}
+                  >
                     <TableCell className="font-medium">
                       {service.customerName || "-"}
                     </TableCell>
@@ -394,6 +435,25 @@ export default function TechnicianPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Task Detail Sheet - Bottom Sheet for My Current Tasks */}
+      <Sheet open={isTaskSheetOpen} onOpenChange={(open) => { if (!open) handleCloseTaskDetail(); }}>
+        <SheetContent side="bottom" className=" rounded-t-2xl h-[85vh] sm:max-w-2xl mx-auto overflow-y-auto">
+          <SheetHeader className="flex items-center">
+            <SheetTitle>Task Details</SheetTitle>
+          </SheetHeader>
+
+          {selectedTaskService && (
+            <div >
+              <ServiceTaskCard
+                task={convertToServiceTaskItem(selectedTaskService)}
+                variant="active"
+                onRefresh={fetchDashboardData}
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
