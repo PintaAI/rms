@@ -61,7 +61,7 @@ export function SidebarHeaderComponent() {
                 }
               />
               <DropdownMenuContent
-                className="w-[--radix-popper-anchor-width]"
+                className="min-w-[200px]"
                 align="start"
               >
                 <DropdownMenuGroup>
@@ -129,7 +129,7 @@ export function SidebarHeaderComponent() {
                 }
               />
               <DropdownMenuContent
-                className="w-[--radix-popper-anchor-width]"
+                className="min-w-[200px]"
                 align="start"
               >
                 <DropdownMenuItem

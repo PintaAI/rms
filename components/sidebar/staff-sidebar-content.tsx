@@ -16,7 +16,7 @@ import { usePathname } from "next/navigation";
 const staffMenuItems = [
   {
     title: "Dashboard",
-    href: "/dashboard",
+    href: "/dashboard/staff",
     icon: RiDashboardLine,
   },
   {
