@@ -2,19 +2,24 @@
 
 import { useAuth } from "@/components/auth-provider";
 import { signOut } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RiLogoutBoxRLine, RiUser3Line } from "@remixicon/react";
 
 export function UserInfo() {
   const { session, isPending } = useAuth();
+  const router = useRouter();
 
   const handleSignOut = async () => {
     await signOut();
+    // Force a full page refresh to clear all client-side state
+    window.location.href = "/auth";
   };
 
   if (isPending) {
@@ -40,17 +45,12 @@ export function UserInfo() {
           <span className="text-sm font-medium">{user.name || user.email}</span>
           <span className="text-xs text-muted-foreground capitalize">{role}</span>
         </div>
-        {user.image ? (
-          <img
-            src={user.image}
-            alt={user.name || "User"}
-            className="h-8 w-8 rounded-full"
-          />
-        ) : (
-          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm">
+        <Avatar>
+          {user.image && <AvatarImage src={user.image} alt={user.name || "User"} />}
+          <AvatarFallback>
             {(user.name || user.email || "?").charAt(0).toUpperCase()}
-          </div>
-        )}
+          </AvatarFallback>
+        </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         <DropdownMenuItem className="flex items-center gap-2">

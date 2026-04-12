@@ -22,7 +22,7 @@ import {
   getStaffServiceList,
   type ServiceListItem,
 } from "@/actions/dashboard";
-import { AddServiceForm } from "@/components/add-service-form";
+import { AddServiceForm } from "@/components/staff/add-service-form";
 import {
   RiAddLine,
   RiFileList3Line,

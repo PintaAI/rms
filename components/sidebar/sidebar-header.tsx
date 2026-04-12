@@ -16,12 +16,14 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/auth-provider";
-import { useToko } from "@/components/toko-provider";
-import { RiStore2Line, RiArrowDownSLine, RiCheckLine } from "@remixicon/react";
+import { useToko } from "@/components/toko/toko-provider";
+import { useRouter } from "next/navigation";
+import { RiStore2Line, RiArrowDownSLine, RiCheckLine, RiSettings4Line } from "@remixicon/react";
 
 export function SidebarHeaderComponent() {
   const { session } = useAuth();
   const { selectedToko, tokoList, setSelectedToko, canSwitchToko, isLoading } = useToko();
+  const router = useRouter();
   
   if (!session) {
     return null;
@@ -86,6 +88,19 @@ export function SidebarHeaderComponent() {
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="gap-3 cursor-pointer"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                    <RiSettings4Line className="h-4 w-4" />
+                  </div>
+                  <div className="flex flex-col flex-1">
+                    <span className="text-sm font-medium">Manage Toko</span>
+                    <span className="text-xs text-muted-foreground">View all settings</span>
+                  </div>
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (

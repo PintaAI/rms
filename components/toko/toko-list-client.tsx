@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { TokoCard } from "@/components/toko-card";
-import { TokoDetailSheet } from "@/components/toko-detail-sheet";
+import { TokoCard } from "@/components/toko/toko-card";
+import { TokoDetailSheet } from "@/components/toko/toko-detail-sheet";
 import type { Toko } from "@/actions/toko";
 
 interface TokoListClientProps {

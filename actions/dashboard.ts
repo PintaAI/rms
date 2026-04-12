@@ -690,12 +690,35 @@ export async function searchHpCatalogs(query: string): Promise<{
       return { success: false, error: "Unauthorized" };
     }
 
+    // Split query to support "brand model" combos (e.g. "iphone 13" → brand:"iphone" + model:"13")
+    const queryWords = query.trim().split(/\s+/);
+    const firstWord = queryWords[0];
+    const restWords = queryWords.slice(1).join(" ");
+
     // Search globally across all HpCatalogs (not toko-specific)
     const hpCatalogs = await prisma.hpCatalog.findMany({
       where: {
         OR: [
+          // Full query in model name (e.g. "13 Pro Max")
           { modelName: { contains: query, mode: "insensitive" } },
+          // Full query in brand name (e.g. "Samsung")
           { brand: { name: { contains: query, mode: "insensitive" } } },
+          // Brand+model split: first word matches brand, rest matches model
+          // Handles "iphone 13" → brand LIKE "iphone" AND model LIKE "13"
+          ...(queryWords.length >= 2
+            ? [
+                {
+                  AND: [
+                    {
+                      brand: {
+                        name: { contains: firstWord, mode: "insensitive" as const },
+                      },
+                    },
+                    { modelName: { contains: restWords, mode: "insensitive" as const } },
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       orderBy: [{ brand: { name: "asc" } }, { modelName: "asc" }],
@@ -753,6 +776,35 @@ export async function createBrand(name: string): Promise<{
   } catch (error) {
     console.error("Error creating brand:", error);
     return { success: false, error: "Failed to create brand" };
+  }
+}
+
+// Search brands by name (global)
+export async function searchBrands(query: string): Promise<{
+  success: boolean;
+  data?: { id: string; name: string }[];
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const brands = await prisma.brand.findMany({
+      where: {
+        name: { contains: query, mode: "insensitive" },
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+      take: 10,
+    });
+
+    return { success: true, data: brands };
+  } catch (error) {
+    console.error("Error searching brands:", error);
+    return { success: false, error: "Failed to search brands" };
   }
 }
 
@@ -1126,6 +1178,8 @@ export interface TechnicianTaskItem {
   customerName: string | null;
   noWa: string;
   complaint: string;
+  passwordPattern: string | null;
+  imei: string | null;
   status: string;
   checkinAt: Date;
   doneAt: Date | null;
@@ -1189,6 +1243,8 @@ export async function getTechnicianTasks(): Promise<{
         customerName: true,
         noWa: true,
         complaint: true,
+        passwordPattern: true,
+        imei: true,
         status: true,
         checkinAt: true,
         doneAt: true,

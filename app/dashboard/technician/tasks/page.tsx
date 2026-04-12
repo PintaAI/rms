@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Card,
   CardHeader,
@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Table,
@@ -44,19 +43,19 @@ import {
 import {
   getTechnicianTasks,
   updateServiceStatus,
-  addServiceItem,
   removeServiceItem,
   getTechnicianSpareparts,
   getTechnicianServicePricelists,
   type TechnicianTaskItem,
 } from "@/actions/dashboard";
 import {
-  RiToolsLine,
   RiAddLine,
   RiDeleteBinLine,
-  RiCheckLine,
   RiPlayCircleLine,
+  RiLockLine,
 } from "@remixicon/react";
+import { AddRepairItemForm } from "@/components/technician/add-repair-item-form";
+import { PatternLock } from "@/components/pattern-lock";
 
 // Status badge colors
 const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -101,22 +100,22 @@ export default function TechnicianTasksPage() {
 
   // Item dialog state
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<TechnicianTaskItem | null>(null);
-  const [itemType, setItemType] = useState<"sparepart" | "service">("sparepart");
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [spareparts, setSpareparts] = useState<Array<{ id: string; name: string; defaultPrice: number }>>([]);
   const [servicePricelists, setServicePricelists] = useState<Array<{ id: string; title: string; defaultPrice: number }>>([]);
-  const [selectedSparepartId, setSelectedSparepartId] = useState<string>("");
-  const [selectedPricelistId, setSelectedPricelistId] = useState<string>("");
-  const [customName, setCustomName] = useState("");
-  const [itemQty, setItemQty] = useState("1");
-  const [itemPrice, setItemPrice] = useState("");
-  const [isAddingItem, setIsAddingItem] = useState(false);
 
   // Status dialog state
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusTaskId, setStatusTaskId] = useState<string>("");
   const [newStatus, setNewStatus] = useState<string>("");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Pattern lock dialog state
+  const [patternDialogOpen, setPatternDialogOpen] = useState(false);
+  const [patternTaskId, setPatternTaskId] = useState<string>("");
+  const [savedPattern, setSavedPattern] = useState<number[]>([]);
+  const [verifyPattern, setVerifyPattern] = useState<number[]>([]);
+  const [patternMatch, setPatternMatch] = useState<boolean | null>(null);
 
   async function fetchTasks() {
     setIsLoading(true);
@@ -161,67 +160,8 @@ export default function TechnicianTasksPage() {
   }, []);
 
   function openItemDialog(task: TechnicianTaskItem) {
-    setSelectedTask(task);
-    setItemType("sparepart");
-    setSelectedSparepartId("");
-    setSelectedPricelistId("");
-    setCustomName("");
-    setItemQty("1");
-    setItemPrice("");
+    setSelectedTaskId(task.id);
     setItemDialogOpen(true);
-  }
-
-  function handleSparepartSelect(sparepartId: string) {
-    setSelectedSparepartId(sparepartId);
-    const sparepart = spareparts.find((s) => s.id === sparepartId);
-    if (sparepart) {
-      setCustomName(sparepart.name);
-      setItemPrice(sparepart.defaultPrice.toString());
-    }
-  }
-
-  function handlePricelistSelect(pricelistId: string) {
-    setSelectedPricelistId(pricelistId);
-    const pricelist = servicePricelists.find((p) => p.id === pricelistId);
-    if (pricelist) {
-      setCustomName(pricelist.title);
-      setItemPrice(pricelist.defaultPrice.toString());
-    }
-  }
-
-  async function handleAddItem() {
-    if (!selectedTask) return;
-
-    if (!customName || !itemQty || !itemPrice) {
-      setError("Please fill in all fields");
-      return;
-    }
-
-    setIsAddingItem(true);
-    setError(null);
-
-    try {
-      const result = await addServiceItem({
-        serviceId: selectedTask.id,
-        type: itemType,
-        sparepartId: itemType === "sparepart" ? selectedSparepartId : undefined,
-        name: customName,
-        qty: parseInt(itemQty, 10),
-        price: parseInt(itemPrice, 10),
-      });
-
-      if (result.success) {
-        setItemDialogOpen(false);
-        await fetchTasks();
-      } else {
-        setError(result.error || "Failed to add item");
-      }
-    } catch (err) {
-      console.error("Error adding item:", err);
-      setError("Failed to add item");
-    } finally {
-      setIsAddingItem(false);
-    }
   }
 
   async function handleRemoveItem(itemId: string) {
@@ -266,6 +206,54 @@ export default function TechnicianTasksPage() {
     } finally {
       setIsUpdatingStatus(false);
     }
+  }
+
+  // Pattern lock functions
+  function openPatternDialog(task: TechnicianTaskItem) {
+    setPatternTaskId(task.id);
+    setPatternMatch(null);
+    setVerifyPattern([]);
+    
+    // Parse saved pattern from string (format: "0-1-2-3")
+    if (task.passwordPattern) {
+      const patternArray = task.passwordPattern
+        .split("-")
+        .map((n) => parseInt(n, 10))
+        .filter((n) => !isNaN(n));
+      setSavedPattern(patternArray);
+    } else {
+      setSavedPattern([]);
+    }
+    
+    setPatternDialogOpen(true);
+  }
+
+  const handleVerifyPatternComplete = useCallback((pattern: number[]) => {
+    setVerifyPattern(pattern);
+    
+    // Compare patterns
+    const isMatch =
+      pattern.length === savedPattern.length &&
+      pattern.every((dot, index) => dot === savedPattern[index]);
+    
+    setPatternMatch(isMatch);
+  }, [savedPattern]);
+
+  function closePatternDialog() {
+    setPatternDialogOpen(false);
+    setPatternTaskId("");
+    setSavedPattern([]);
+    setVerifyPattern([]);
+    setPatternMatch(null);
+  }
+
+  // Helper to parse pattern string for display
+  function parsePatternString(patternStr: string | null): number[] {
+    if (!patternStr) return [];
+    return patternStr
+      .split("-")
+      .map((n) => parseInt(n, 10))
+      .filter((n) => !isNaN(n));
   }
 
   // Separate tasks by status
@@ -368,6 +356,44 @@ export default function TechnicianTasksPage() {
                       <Label className="text-muted-foreground">Complaint</Label>
                       <p className="text-sm">{task.complaint}</p>
                     </div>
+
+                    {/* Password / Pattern */}
+                    {(task.passwordPattern || task.imei) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {task.passwordPattern && (
+                          <div>
+                            <Label className="text-muted-foreground">Password / Pattern</Label>
+                            <div className="flex items-center gap-2 mt-1">
+                              {task.passwordPattern.includes("-") ? (
+                                <>
+                                  <Badge variant="outline" className="font-mono">
+                                    Pattern: {parsePatternString(task.passwordPattern).join(" → ")}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => openPatternDialog(task)}
+                                  >
+                                    <RiLockLine className="h-4 w-4 mr-1" />
+                                    View
+                                  </Button>
+                                </>
+                              ) : (
+                                <Badge variant="outline" className="font-mono">
+                                  {task.passwordPattern}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {task.imei && (
+                          <div>
+                            <Label className="text-muted-foreground">IMEI</Label>
+                            <p className="text-sm font-mono">{task.imei}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Items */}
                     <div>
@@ -571,121 +597,17 @@ export default function TechnicianTasksPage() {
       </Tabs>
 
       {/* Add Item Dialog */}
-      <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Repair Item</DialogTitle>
-            <DialogDescription>
-              Add spareparts or services to this repair task
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label>Item Type</Label>
-              <Select
-                value={itemType}
-                onValueChange={(value) => {
-                  setItemType(value as "sparepart" | "service");
-                  setSelectedSparepartId("");
-                  setSelectedPricelistId("");
-                  setCustomName("");
-                  setItemPrice("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sparepart">Sparepart</SelectItem>
-                  <SelectItem value="service">Service</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {itemType === "sparepart" && (
-              <div>
-                <Label>Select Sparepart (optional)</Label>
-                <Select
-                  value={selectedSparepartId}
-                  onValueChange={(value) => value && handleSparepartSelect(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a sparepart" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {spareparts.map((sp) => (
-                      <SelectItem key={sp.id} value={sp.id}>
-                        {sp.name} - {formatCurrency(sp.defaultPrice)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {itemType === "service" && (
-              <div>
-                <Label>Select Service (optional)</Label>
-                <Select
-                  value={selectedPricelistId}
-                  onValueChange={(value) => value && handlePricelistSelect(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a service" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {servicePricelists.map((sp) => (
-                      <SelectItem key={sp.id} value={sp.id}>
-                        {sp.title} - {formatCurrency(sp.defaultPrice)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            <div>
-              <Label>Name</Label>
-              <Input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="Item name"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Quantity</Label>
-                <Input
-                  type="number"
-                  value={itemQty}
-                  onChange={(e) => setItemQty(e.target.value)}
-                  min="1"
-                />
-              </div>
-              <div>
-                <Label>Price (IDR)</Label>
-                <Input
-                  type="number"
-                  value={itemPrice}
-                  onChange={(e) => setItemPrice(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setItemDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddItem} disabled={isAddingItem}>
-              {isAddingItem ? "Adding..." : "Add Item"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {selectedTaskId && (
+        <AddRepairItemForm
+          open={itemDialogOpen}
+          onOpenChange={setItemDialogOpen}
+          serviceId={selectedTaskId}
+          spareparts={spareparts}
+          servicePricelists={servicePricelists}
+          onSuccess={fetchTasks}
+          onError={setError}
+        />
+      )}
 
       {/* Update Status Dialog */}
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
@@ -719,6 +641,91 @@ export default function TechnicianTasksPage() {
             </Button>
             <Button onClick={handleUpdateStatus} disabled={isUpdatingStatus}>
               {isUpdatingStatus ? "Updating..." : "Update Status"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pattern Lock View Dialog */}
+      <Dialog open={patternDialogOpen} onOpenChange={setPatternDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pattern Lock</DialogTitle>
+            <DialogDescription>
+              View the saved pattern for this device
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Saved Pattern Display */}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Saved Pattern</Label>
+              <div className="flex justify-center p-4 bg-muted/30 rounded-lg border">
+                <PatternLock
+                  width={200}
+                  height={200}
+                  autoReset={false}
+                  disabled
+                  showPatternNumbers
+                  primaryColor="#22c55e"
+                />
+              </div>
+              {savedPattern.length > 0 && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Pattern: {savedPattern.join(" → ")}
+                </p>
+              )}
+              {!savedPattern.length && (
+                <p className="text-center text-sm text-muted-foreground">
+                  No pattern saved
+                </p>
+              )}
+            </div>
+
+            {/* Verification Section */}
+            {savedPattern.length > 0 && (
+              <div className="space-y-2 pt-4 border-t">
+                <Label className="text-muted-foreground">Verify Pattern</Label>
+                <p className="text-xs text-muted-foreground">
+                  Draw the pattern to verify it matches
+                </p>
+                <div className="flex justify-center p-4 bg-muted/30 rounded-lg border">
+                  <PatternLock
+                    width={200}
+                    height={200}
+                    autoReset={false}
+                    error={patternMatch === false}
+                    onPatternComplete={handleVerifyPatternComplete}
+                  />
+                </div>
+                {verifyPattern.length > 0 && (
+                  <p className="text-center text-sm text-muted-foreground">
+                    Your pattern: {verifyPattern.join(" → ")}
+                  </p>
+                )}
+                {patternMatch === true && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-green-600 font-medium">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Pattern matches!
+                  </div>
+                )}
+                {patternMatch === false && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-red-600 font-medium">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Pattern does not match
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closePatternDialog}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

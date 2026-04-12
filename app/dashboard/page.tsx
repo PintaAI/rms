@@ -6,8 +6,8 @@ import {
   EmptyDescription,
   EmptyMedia,
 } from "@/components/ui/empty";
-import { TokoForm } from "@/components/toko-form";
-import { TokoListClient } from "@/components/toko-list-client";
+import { TokoForm } from "@/components/toko/toko-form";
+import { TokoListClient } from "@/components/toko/toko-list-client";
 import { RiStore2Line } from "@remixicon/react";
 
 export default async function DashboardPage() {

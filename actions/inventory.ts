@@ -40,6 +40,7 @@ const createSparepartSchema = z.object({
   defaultPrice: z.number().int().min(0, "Price must be 0 or greater"),
   isUniversal: z.boolean().optional(),
   tokoId: z.string(),
+  hpCatalogIds: z.array(z.string()).optional(), // Compatible device models
 });
 
 const updateSparepartSchema = z.object({
@@ -47,6 +48,7 @@ const updateSparepartSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
   defaultPrice: z.number().int().min(0, "Price must be 0 or greater").optional(),
   isUniversal: z.boolean().optional(),
+  hpCatalogIds: z.array(z.string()).optional(), // Compatible device models
 });
 
 const createServicePricelistSchema = z.object({
@@ -147,16 +149,38 @@ export async function createSparepart(data: z.infer<typeof createSparepartSchema
       return { success: false, error: "Sparepart with this name already exists" };
     }
 
+    // Create sparepart with compatibilities
     const sparepart = await prisma.sparepart.create({
       data: {
         name: validatedData.name,
         defaultPrice: validatedData.defaultPrice,
         isUniversal: validatedData.isUniversal ?? false,
         tokoId: validatedData.tokoId,
+        // Create compatibilities if hpCatalogIds provided
+        compatibilities: validatedData.hpCatalogIds
+          ? {
+              create: validatedData.hpCatalogIds.map((hpCatalogId) => ({
+                hpCatalogId,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        compatibilities: {
+          include: {
+            hpCatalog: {
+              include: {
+                brand: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    revalidatePath("/dashboard/admin/gudang");
+    revalidatePath("/dashboard/admin/inventory");
     return { success: true, data: sparepart };
   } catch (error) {
     console.error("Error creating sparepart:", error);
@@ -216,16 +240,41 @@ export async function updateSparepart(data: z.infer<typeof updateSparepartSchema
       }
     }
 
+    // Update sparepart and sync compatibilities
     const updatedSparepart = await prisma.sparepart.update({
       where: { id: validatedData.id },
       data: {
         name: validatedData.name,
         defaultPrice: validatedData.defaultPrice,
         isUniversal: validatedData.isUniversal,
+        // Sync compatibilities if hpCatalogIds provided
+        ...(validatedData.hpCatalogIds && {
+          compatibilities: {
+            // Delete all existing compatibilities first
+            deleteMany: {},
+            // Create new compatibilities
+            create: validatedData.hpCatalogIds.map((hpCatalogId) => ({
+              hpCatalogId,
+            })),
+          },
+        }),
+      },
+      include: {
+        compatibilities: {
+          include: {
+            hpCatalog: {
+              include: {
+                brand: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    revalidatePath("/dashboard/admin/gudang");
+    revalidatePath("/dashboard/admin/inventory");
     return { success: true, data: updatedSparepart };
   } catch (error) {
     console.error("Error updating sparepart:", error);

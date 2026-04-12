@@ -191,7 +191,8 @@ export function AuthCard({
       if (onLoginSuccess) {
         onLoginSuccess();
       } else {
-        router.push(redirectAfterLogin);
+        // Use full page reload to ensure session state is properly refreshed
+        window.location.href = redirectAfterLogin;
       }
     } catch (error) {
       setLoginServerError("An unexpected error occurred. Please try again.");
@@ -234,7 +235,8 @@ export function AuthCard({
       if (onRegisterSuccess) {
         onRegisterSuccess();
       } else {
-        router.push(redirectAfterRegister);
+        // Use full page reload to ensure session state is properly refreshed
+        window.location.href = redirectAfterRegister;
       }
     } catch (error) {
       setRegisterServerError("An unexpected error occurred. Please try again.");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useToko } from "@/components/toko-provider";
+import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
   CardHeader,
@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,16 +36,15 @@ import {
 } from "@/components/ui/dialog";
 import {
   getSpareparts,
-  createSparepart,
-  updateSparepart,
   deleteSparepart,
   getServicePricelists,
   createServicePricelist,
   updateServicePricelist,
   deleteServicePricelist,
-  type Sparepart,
+  type SparepartWithCompatibilities,
   type ServicePricelist,
 } from "@/actions/inventory";
+import { SparepartFormDialog } from "@/components/admin/sparepart-form-dialog";
 import {
   RiAddLine,
   RiEditLine,
@@ -65,148 +63,6 @@ function formatCurrency(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-// Sparepart Form Dialog
-interface SparepartFormProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  sparepart?: Sparepart | null;
-  tokoId: string;
-  onSuccess: () => void;
-}
-
-function SparepartFormDialog({
-  open,
-  onOpenChange,
-  sparepart,
-  tokoId,
-  onSuccess,
-}: SparepartFormProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [defaultPrice, setDefaultPrice] = useState("");
-  const [isUniversal, setIsUniversal] = useState(false);
-
-  useEffect(() => {
-    if (sparepart) {
-      setName(sparepart.name);
-      setDefaultPrice(sparepart.defaultPrice.toString());
-      setIsUniversal(sparepart.isUniversal);
-    } else {
-      setName("");
-      setDefaultPrice("");
-      setIsUniversal(false);
-    }
-    setError(null);
-  }, [sparepart, open]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const price = parseInt(defaultPrice, 10);
-      if (isNaN(price) || price < 0) {
-        setError("Price must be a valid number");
-        setIsLoading(false);
-        return;
-      }
-
-      let result;
-      if (sparepart) {
-        result = await updateSparepart({
-          id: sparepart.id,
-          name,
-          defaultPrice: price,
-          isUniversal,
-        });
-      } else {
-        result = await createSparepart({
-          name,
-          defaultPrice: price,
-          isUniversal,
-          tokoId,
-        });
-      }
-
-      if (result.success) {
-        onSuccess();
-        onOpenChange(false);
-      } else {
-        setError(result.error || "Failed to save sparepart");
-      }
-    } catch (err) {
-      setError("An error occurred");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {sparepart ? "Edit Sparepart" : "Add Sparepart"}
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="space-y-4 py-4">
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded">
-                {error}
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., LCD iPhone 13"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="price">Default Price</Label>
-              <Input
-                id="price"
-                type="number"
-                value={defaultPrice}
-                onChange={(e) => setDefaultPrice(e.target.value)}
-                placeholder="0"
-                min="0"
-                required
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="isUniversal"
-                checked={isUniversal}
-                onCheckedChange={(checked) => setIsUniversal(checked === true)}
-              />
-              <Label htmlFor="isUniversal">Universal (can be used on any device)</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Saving..." : sparepart ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // Service Pricelist Form Dialog
@@ -385,14 +241,14 @@ function DeleteDialog({
 
 export default function InventoryPage() {
   const { selectedToko, isLoading: tokoLoading } = useToko();
-  const [spareparts, setSpareparts] = useState<Sparepart[]>([]);
+  const [spareparts, setSpareparts] = useState<SparepartWithCompatibilities[]>([]);
   const [pricelists, setPricelists] = useState<ServicePricelist[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Dialog states
   const [sparepartDialogOpen, setSparepartDialogOpen] = useState(false);
-  const [editingSparepart, setEditingSparepart] = useState<Sparepart | null>(null);
+  const [editingSparepart, setEditingSparepart] = useState<SparepartWithCompatibilities | null>(null);
   const [pricelistDialogOpen, setPricelistDialogOpen] = useState(false);
   const [editingPricelist, setEditingPricelist] = useState<ServicePricelist | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -464,7 +320,7 @@ export default function InventoryPage() {
     }
   }
 
-  function openSparepartDialog(sparepart?: Sparepart) {
+  function openSparepartDialog(sparepart?: SparepartWithCompatibilities) {
     setEditingSparepart(sparepart || null);
     setSparepartDialogOpen(true);
   }
@@ -530,7 +386,7 @@ export default function InventoryPage() {
           </TabsTrigger>
           <TabsTrigger value="services" className="gap-2">
             <RiFileList3Line className="h-4 w-4" />
-            Services ({pricelists.length})
+            Jasa Servis ({pricelists.length})
           </TabsTrigger>
         </TabsList>
 
@@ -561,6 +417,7 @@ export default function InventoryPage() {
                       <TableHead>Name</TableHead>
                       <TableHead>Default Price</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Compatible Devices</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -577,6 +434,30 @@ export default function InventoryPage() {
                           <Badge variant={sparepart.isUniversal ? "default" : "secondary"}>
                             {sparepart.isUniversal ? "Universal" : "Specific"}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {sparepart.isUniversal ? (
+                            <span className="text-muted-foreground text-sm">
+                              All devices
+                            </span>
+                          ) : sparepart.compatibilities.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {sparepart.compatibilities.slice(0, 3).map((c) => (
+                                <Badge key={c.hpCatalogId} variant="outline" className="text-xs">
+                                  {c.hpCatalog.brand.name} {c.hpCatalog.modelName}
+                                </Badge>
+                              ))}
+                              {sparepart.compatibilities.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{sparepart.compatibilities.length - 3} more
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">
+                              None
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">

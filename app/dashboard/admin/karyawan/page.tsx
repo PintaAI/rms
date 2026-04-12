@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useToko } from "@/components/toko-provider";
+import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
   CardHeader,
