@@ -1,18 +1,10 @@
 import { getAllToko } from "@/actions/toko";
-import {
-  Empty,
-  EmptyHeader,
-  EmptyTitle,
-  EmptyDescription,
-  EmptyMedia,
-} from "@/components/ui/empty";
 import { TokoListClient } from "@/components/toko/toko-list-client";
-import { RiStore2Line } from "@remixicon/react";
 
 export default async function DashboardPage() {
   const result = await getAllToko();
   const tokoList = result.success ? result.data : [];
-//note: disini cuma bisa di akses sama admin untuk CRUD toko sama nambag staff
+
   return (
     <div className="container mx-auto">
       <div className="flex-col items-center">
@@ -28,21 +20,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {tokoList && tokoList.length === 0 ? (
-        <Empty className="border-2 border-dashed">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <RiStore2Line />
-            </EmptyMedia>
-            <EmptyTitle>No Toko Found</EmptyTitle>
-            <EmptyDescription>
-              Get started by creating your first toko.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      ) : (
-        <TokoListClient tokoList={tokoList!} />
-      )}
+      <TokoListClient tokoList={tokoList ?? []} />
     </div>
   );
 }

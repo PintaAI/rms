@@ -4,7 +4,14 @@ import { useState } from "react";
 import { TokoCard } from "@/components/toko/toko-card";
 import { TokoDetailSheet } from "@/components/toko/toko-detail-sheet";
 import { Button } from "@/components/ui/button";
-import { RiAddLine } from "@remixicon/react";
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+  EmptyMedia,
+} from "@/components/ui/empty";
+import { RiAddLine, RiStore2Line } from "@remixicon/react";
 import type { Toko } from "@/actions/toko";
 
 interface TokoListClientProps {
@@ -19,6 +26,34 @@ export function TokoListClient({ tokoList, onSuccess }: TokoListClientProps) {
   function handleCreateClick() {
     setSelectedTokoId(null);
     setSheetOpen(true);
+  }
+
+  if (tokoList.length === 0) {
+    return (
+      <>
+        <Empty className="border-2 border-dashed">
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <RiStore2Line />
+            </EmptyMedia>
+            <EmptyTitle>No Toko Found</EmptyTitle>
+            <EmptyDescription>
+              Get started by creating your first toko.
+            </EmptyDescription>
+          </EmptyHeader>
+          <Button onClick={handleCreateClick} className="mt-4">
+            <RiAddLine className="h-4 w-4 mr-2" />
+            Add Toko
+          </Button>
+        </Empty>
+        <TokoDetailSheet
+          tokoId={selectedTokoId}
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          onSuccess={onSuccess}
+        />
+      </>
+    );
   }
 
   return (
