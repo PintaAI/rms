@@ -9,21 +9,12 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
 import {
   getTokoDashboardData,
   type TokoDashboardData,
-  type RecentService,
 } from "@/actions/dashboard";
 import { TechnicianAssignmentDialog } from "@/components/admin/technician-assignment-dialog";
+import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
 import {
   RiSmartphoneLine,
   RiUserLine,
@@ -34,24 +25,7 @@ import {
   RiPlayCircleLine,
   RiFileList3Line,
   RiStore2Line,
-  RiUserStarLine,
 } from "@remixicon/react";
-
-// Status badge colors
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  received: "secondary",
-  repairing: "default",
-  done: "outline",
-  picked_up: "default",
-};
-
-// Status labels
-const statusLabels: Record<string, string> = {
-  received: "Received",
-  repairing: "In Progress",
-  done: "Done",
-  picked_up: "Picked Up",
-};
 
 // Stat Card Component
 interface StatCardProps {
@@ -92,17 +66,6 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-// Format date
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
-}
-
 export default function AdminPage() {
   const { selectedToko, isLoading: tokoLoading } = useToko();
   const [dashboardData, setDashboardData] = useState<TokoDashboardData | null>(
@@ -118,10 +81,10 @@ export default function AdminPage() {
     technician: { id: string; name: string } | null;
   } | null>(null);
 
-  const handleTechnicianClick = (service: RecentService) => {
+  const handleTechnicianClick = (service: ServiceTableItem) => {
     setSelectedService({
       id: service.id,
-      technician: service.technician
+      technician: service.technician && service.technician.id
         ? { id: service.technician.id, name: service.technician.name }
         : null,
     });
@@ -294,85 +257,13 @@ export default function AdminPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {recentServices.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No services found for this toko.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Technician</TableHead>
-                  <TableHead>Created By</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Check-in</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentServices.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {service.customerName || "-"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {service.noWa}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {service.hpCatalog.brand.name}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {service.hpCatalog.modelName}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="max-w-[200px] truncate">
-                        {service.complaint}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <button
-                        onClick={() => handleTechnicianClick(service)}
-                        className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
-                      >
-                        {service.technician ? (
-                          <Badge variant="default" className="cursor-pointer">
-                            <RiUserStarLine className="h-3 w-3 mr-1" />
-                            {service.technician.name}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="cursor-pointer">
-                            <RiUserLine className="h-3 w-3 mr-1" />
-                            Unassigned
-                          </Badge>
-                        )}
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      {service.createdBy.name}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[service.status] || "secondary"}>
-                        {statusLabels[service.status] || service.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ServiceTable
+            services={recentServices}
+            showInvoice={true}
+            showCreatedBy={true}
+            onTechnicianClick={handleTechnicianClick}
+            emptyMessage="No services found for this toko."
+          />
         </CardContent>
       </Card>
 

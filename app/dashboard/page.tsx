@@ -1,26 +1,12 @@
-import { getAllToko } from "@/actions/toko";
-import { TokoListClient } from "@/components/toko/toko-list-client";
+import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 
 export default async function DashboardPage() {
-  const result = await getAllToko();
-  const tokoList = result.success ? result.data : [];
-
-  return (
-    <div className="container mx-auto">
-      <div className="flex-col items-center">
-        <h1 className="text-2xl font-bold">Toko List</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage your toko and view details.
-        </p>
-      </div>
-
-      {!result.success && (
-        <div className="text-destructive mb-4">
-          Error: {result.error}
-        </div>
-      )}
-
-      <TokoListClient tokoList={tokoList ?? []} />
-    </div>
-  );
+  const headersList = await headers();
+  const currentPath = headersList.get("x-pathname") || "/dashboard";
+  console.log({ currentPath });
+  
+  // This page should never be accessed - proxy redirects all users to their role-specific dashboard
+  // If somehow accessed directly, redirect to a default location
+  redirect("/dashboard/staff");
 }

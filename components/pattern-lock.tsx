@@ -16,6 +16,8 @@ interface PatternLockProps {
   cols?: number;
   /** Number of rows in the grid */
   rows?: number;
+  /** External pattern to display (for read-only display) */
+  pattern?: number[];
   /** Callback when pattern is completed */
   onPatternComplete?: (pattern: number[]) => void;
   /** Callback when pattern changes during drawing */
@@ -36,6 +38,10 @@ interface PatternLockProps {
   disabled?: boolean;
   /** Show pattern numbers for accessibility/debugging */
   showPatternNumbers?: boolean;
+  /** Animate the pattern on mount (for display mode) */
+  animatePattern?: boolean;
+  /** Key to trigger re-animation when changed */
+  animationKey?: number;
 }
 
 export function PatternLock({
@@ -43,6 +49,7 @@ export function PatternLock({
   height = 300,
   cols = 3,
   rows = 3,
+  pattern: externalPattern,
   onPatternComplete,
   onPatternChange,
   error: externalError = false,
@@ -53,13 +60,41 @@ export function PatternLock({
   autoReset = true,
   disabled = false,
   showPatternNumbers = false,
+  animatePattern = false,
+  animationKey = 0,
 }: PatternLockProps) {
-  const [pattern, setPattern] = useState<number[]>([]);
+  const [internalPattern, setInternalPattern] = useState<number[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [mousePosition, setMousePosition] = useState<Point | null>(null);
   const [internalError, setInternalError] = useState(false);
+  const [animatedPattern, setAnimatedPattern] = useState<number[]>([]);
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Animation effect for displaying pattern
+  useEffect(() => {
+    if (animatePattern && externalPattern && externalPattern.length > 0) {
+      setAnimatedPattern([]);
+      let index = 0;
+      const interval = setInterval(() => {
+        if (index < externalPattern.length) {
+          setAnimatedPattern(externalPattern.slice(0, index + 1));
+          index++;
+        } else {
+          clearInterval(interval);
+        }
+      }, 150); // 150ms per dot animation
+      
+      return () => clearInterval(interval);
+    } else if (externalPattern) {
+      setAnimatedPattern(externalPattern);
+    } else {
+      setAnimatedPattern([]);
+    }
+  }, [animatePattern, externalPattern, animationKey]);
+
+  // Use animated pattern for display mode, internal pattern for interactive mode
+  const pattern = externalPattern !== undefined ? animatedPattern : internalPattern;
 
   // Combine internal and external error states
   const hasError = externalError || internalError;
@@ -170,7 +205,7 @@ export function PatternLock({
         setInternalError(false);
         setMousePosition(point);
         const newPattern = [dotIndex];
-        setPattern(newPattern);
+        setInternalPattern(newPattern);
         onPatternChange?.(newPattern);
       }
     },
@@ -194,7 +229,7 @@ export function PatternLock({
       const dotIndex = findDotAtPosition(point.x, point.y);
       if (dotIndex >= 0 && !pattern.includes(dotIndex)) {
         const newPattern = [...pattern, dotIndex];
-        setPattern(newPattern);
+        setInternalPattern(newPattern);
         onPatternChange?.(newPattern);
       }
     },
@@ -213,7 +248,7 @@ export function PatternLock({
 
       if (autoReset) {
         setTimeout(() => {
-          setPattern([]);
+          setInternalPattern([]);
         }, resetDelay);
       }
     }
@@ -228,7 +263,7 @@ export function PatternLock({
 
   // Reset pattern programmatically
   const reset = useCallback(() => {
-    setPattern([]);
+    setInternalPattern([]);
     setInternalError(false);
     setIsDrawing(false);
     setMousePosition(null);

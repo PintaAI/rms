@@ -44,12 +44,8 @@ export default async function proxy(req: NextRequest) {
   }
 
   // If user is accessing /dashboard (root), redirect to role-specific dashboard
-  // Exception: admin users can access /dashboard directly
+  // No one should access /dashboard directly - always redirect to role-specific page
   if (path === '/dashboard' && sessionToken && !isRoleDashboard) {
-    // Allow admin to access /dashboard without redirect
-    if (userRole === 'admin') {
-      return NextResponse.next()
-    }
     if (userRole && roleRedirects[userRole]) {
       return NextResponse.redirect(new URL(roleRedirects[userRole], req.url))
     }

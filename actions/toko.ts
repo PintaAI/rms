@@ -11,6 +11,7 @@ export type Toko = {
   name: string;
   address: string | null;
   phone: string | null;
+  logoUrl: string | null;
   status: "active" | "inactive";
   createdAt: Date;
   updatedAt: Date;
@@ -21,6 +22,7 @@ const createTokoSchema = z.object({
   name: z.string().min(1, "Name is required"),
   address: z.string().optional(),
   phone: z.string().optional(),
+  logoUrl: z.string().url().optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -29,6 +31,7 @@ const updateTokoSchema = z.object({
   name: z.string().min(1, "Name is required").optional(),
   address: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
+  logoUrl: z.string().url().nullable().optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
 
@@ -130,11 +133,13 @@ export async function createToko(
         name: validatedData.name,
         address: validatedData.address || null,
         phone: validatedData.phone || null,
+        logoUrl: validatedData.logoUrl || null,
         status: validatedData.status || "active",
       },
     });
 
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/admin/toko");
 
     return {
       success: true,
@@ -185,6 +190,7 @@ export async function updateToko(
     });
 
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/admin/toko");
 
     return {
       success: true,
@@ -228,6 +234,7 @@ export async function deleteToko(id: string): Promise<{
     });
 
     revalidatePath("/dashboard");
+    revalidatePath("/dashboard/admin/toko");
 
     return {
       success: true,

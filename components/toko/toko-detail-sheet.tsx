@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Sheet,
   SheetContent,
@@ -15,8 +15,12 @@ import { Label } from "@/components/ui/label";
 import { getTokoById, createToko, updateToko } from "@/actions/toko";
 import { AddUserForm } from "@/components/add-user-form";
 import { UserList } from "@/components/user-list";
-import { RiStore2Line, RiTeamLine, RiToolsLine, RiLoader4Line, RiAddLine } from "@remixicon/react";
+import { RiStore2Line, RiTeamLine, RiToolsLine, RiLoader4Line, RiDeleteBinLine, RiImageLine,} from "@remixicon/react";
 import type { Toko } from "@/actions/toko";
+
+// Logo size limit: 2MB
+const LOGO_MAX_SIZE = 2 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 interface TokoDetailSheetProps {
   tokoId: string | null;
@@ -35,6 +39,10 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isCreateMode = !tokoId;
   const isEditMode = tokoId && toko;
@@ -50,6 +58,8 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
           setName(result.data.name);
           setAddress(result.data.address || "");
           setPhone(result.data.phone || "");
+          setLogoUrl(result.data.logoUrl || null);
+          setLogoPreview(result.data.logoUrl || null);
         }
         setIsLoading(false);
       } else if (open && !tokoId) {
@@ -58,11 +68,88 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
         setName("");
         setAddress("");
         setPhone("");
+        setLogoUrl(null);
+        setLogoPreview(null);
         setError(null);
       }
     }
     fetchToko();
   }, [tokoId, open]);
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setError("Invalid file type. Please upload a JPEG, PNG, WebP, or GIF image.");
+      return;
+    }
+
+    // Validate file size
+    if (file.size > LOGO_MAX_SIZE) {
+      setError(`File size exceeds the limit of ${LOGO_MAX_SIZE / 1024 / 1024}MB. Please upload a smaller image.`);
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    setError(null);
+
+    try {
+      // Create preview
+      const previewUrl = URL.createObjectURL(file);
+      setLogoPreview(previewUrl);
+
+      // Upload to blob storage
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("pathname", `logos/${Date.now()}-${file.name}`);
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload logo");
+      }
+
+      const result = await response.json();
+      setLogoUrl(result.blob.url);
+    } catch (err) {
+      console.error("Logo upload error:", err);
+      setError(err instanceof Error ? err.message : "Failed to upload logo");
+      setLogoPreview(null);
+    } finally {
+      setIsUploadingLogo(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  async function handleRemoveLogo() {
+    // Delete from blob storage if there's a stored URL
+    if (logoUrl && logoUrl.startsWith("http")) {
+      try {
+        await fetch("/api/upload", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: logoUrl }),
+        });
+      } catch (err) {
+        console.error("Failed to delete logo from blob storage:", err);
+      }
+    }
+    
+    // Clear local state
+    setLogoUrl(null);
+    setLogoPreview(null);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,12 +163,14 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
         name,
         address: address || undefined,
         phone: phone || undefined,
+        logoUrl: logoUrl || null,
       });
     } else {
       result = await createToko({
         name,
         address: address || undefined,
         phone: phone || undefined,
+        logoUrl: logoUrl || undefined,
       });
     }
 
@@ -118,7 +207,7 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
               </SheetDescription>
             </SheetHeader>
 
-            <Tabs defaultValue={isCreateMode ? "details" : "staff"} className="w-full">
+            <Tabs defaultValue={"details"} className="w-full">
               <TabsList className="w-full">
                 <TabsTrigger value="details" className="flex items-center">
                   <RiStore2Line className="w-4 h-4" />
@@ -146,6 +235,57 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       {error}
                     </div>
                   )}
+                  
+                  {/* Logo Upload - Top Center */}
+                  <div className="space-y-2 flex flex-col items-center">
+                    <Label className="font-bold">Logo</Label>
+                    
+                    {logoPreview ? (
+                      <div className="relative w-32 h-32 rounded-lg overflow-hidden border">
+                        <img
+                          src={logoPreview}
+                          alt="Logo preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full hover:bg-destructive/90"
+                          disabled={isSaving || isUploadingLogo}
+                        >
+                          <RiDeleteBinLine className="text-background w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className="w-32 h-32 border-2 border-dashed rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {isUploadingLogo ? (
+                          <RiLoader4Line className="w-8 h-8 animate-spin text-muted-foreground" />
+                        ) : (
+                          <>
+                            <RiImageLine className="w-8 h-8 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground mt-1">Upload Logo</span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-muted-foreground text-center">
+                      Max file size: 2MB. Supported formats: JPEG, PNG, WebP, GIF
+                    </p>
+                    
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      disabled={isSaving || isUploadingLogo}
+                    />
+                  </div>
+                  
                   <div className="space-y-2">
                     <Label htmlFor="name">Name *</Label>
                     <Input
@@ -178,6 +318,7 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       disabled={isSaving}
                     />
                   </div>
+                  
                   <div className="flex justify-end gap-2 pt-2">
                     <Button
                       type="button"

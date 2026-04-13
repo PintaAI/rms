@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
   CardHeader,
@@ -10,14 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
+import { ServiceTable } from "@/components/dashboard/service-table";
 import {
   getStaffServiceList,
   type ServiceListItem,
@@ -30,53 +24,10 @@ import {
   RiCheckLine,
   RiPlayCircleLine,
   RiCheckboxCircleLine,
-  RiMoreLine,
 } from "@remixicon/react";
 
-// Status badge colors
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  received: "secondary",
-  repairing: "default",
-  done: "outline",
-  picked_up: "default",
-};
-
-// Status labels
-const statusLabels: Record<string, string> = {
-  received: "Received",
-  repairing: "In Progress",
-  done: "Done",
-  picked_up: "Picked Up",
-};
-
-// Payment status colors
-const paymentStatusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  unpaid: "destructive",
-  paid: "default",
-};
-
-// Format date
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
-}
-
-// Format currency
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 export default function StaffPage() {
+  const { selectedToko } = useToko();
   const [services, setServices] = useState<ServiceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,11 +35,17 @@ export default function StaffPage() {
   const [filter, setFilter] = useState<string>("all");
 
   const fetchServices = useCallback(async () => {
+    if (!selectedToko) {
+      setError("No toko selected");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await getStaffServiceList();
+      const result = await getStaffServiceList(selectedToko.id);
       if (result.success && result.data) {
         setServices(result.data);
       } else {
@@ -100,7 +57,7 @@ export default function StaffPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedToko]);
 
   useEffect(() => {
     fetchServices();
@@ -140,6 +97,15 @@ export default function StaffPage() {
             <div className="text-center text-muted-foreground">Loading services...</div>
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  // No toko selected state
+  if (!selectedToko) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="text-muted-foreground">Select a toko to view services</div>
       </div>
     );
   }
@@ -289,82 +255,18 @@ export default function StaffPage() {
       {/* Service List Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Service List</CardTitle>
+          <CardTitle>Services list </CardTitle>
           <CardDescription>
-            Showing {filteredServices.length} of {services.length} services
+            servis terbaru dari {selectedToko.name}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredServices.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              No services found
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Technician</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Check-in</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredServices.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell className="font-medium">
-                      {service.customerName || "-"}
-                    </TableCell>
-                    <TableCell>{service.noWa}</TableCell>
-                    <TableCell>
-                      {service.hpCatalog.brand.name} {service.hpCatalog.modelName}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {service.complaint}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[service.status] || "outline"}>
-                        {statusLabels[service.status] || service.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {service.technician?.name || "-"}
-                    </TableCell>
-                    <TableCell>
-                      {service.invoice ? (
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium">
-                            {formatCurrency(service.invoice.grandTotal)}
-                          </span>
-                          <Badge
-                            variant={paymentStatusColors[service.invoice.paymentStatus] || "outline"}
-                            className="w-fit mt-1"
-                          >
-                            {service.invoice.paymentStatus}
-                          </Badge>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon">
-                        <RiMoreLine className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ServiceTable
+            services={filteredServices}
+            showInvoice={true}
+            showCreatedBy={true}
+            emptyMessage="No services found"
+          />
         </CardContent>
       </Card>
     </div>

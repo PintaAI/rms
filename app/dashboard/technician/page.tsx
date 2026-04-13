@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Card,
   CardHeader,
@@ -90,14 +90,25 @@ export default function TechnicianPage() {
   const [selectedTaskService, setSelectedTaskService] = useState<TechnicianTaskService | null>(null);
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 
-  async function fetchDashboardData() {
-    setIsLoading(true);
+  const fetchDashboardData = useCallback(async (silent = false) => {
+    // silent = true: background re-fetch after an optimistic mutation.
+    // Skip setIsLoading so the page stays mounted and optimistic state is preserved.
+    if (!silent) setIsLoading(true);
     setError(null);
 
     try {
       const result = await getTechnicianDashboardData();
       if (result.success && result.data) {
         setDashboardData(result.data);
+
+        // Keep selectedTaskService in sync with the fresh server data so
+        // the ServiceTaskCard inside the Sheet receives an up-to-date
+        // `task` prop after a silent re-fetch.
+        setSelectedTaskService((prev) => {
+          if (!prev) return prev;
+          const fresh = result.data!.myTasks.find((t) => t.id === prev.id);
+          return fresh ?? null;
+        });
       } else {
         setError(result.error || "Failed to load dashboard data");
       }
@@ -105,9 +116,9 @@ export default function TechnicianPage() {
       console.error("Error fetching dashboard data:", err);
       setError("Failed to load dashboard data");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
@@ -145,23 +156,25 @@ export default function TechnicianPage() {
     }
   }
 
-  // Convert TechnicianTaskService to ServiceTaskItem for ServiceTaskCard
-  function convertToServiceTaskItem(service: TechnicianTaskService): ServiceTaskItem {
+  // Memoize the converted task so the ServiceTaskCard receives a stable
+  // object reference and its useEffect doesn't fire on unrelated re-renders.
+  const selectedTaskAsItem = useMemo<ServiceTaskItem | null>(() => {
+    if (!selectedTaskService) return null;
     return {
-      id: service.id,
-      customerName: service.customerName,
-      noWa: service.noWa,
-      complaint: service.complaint,
-      passwordPattern: service.passwordPattern,
-      imei: service.imei,
-      status: service.status,
-      checkinAt: service.checkinAt,
-      doneAt: service.doneAt,
-      hpCatalog: service.hpCatalog,
-      items: service.items,
-      invoice: service.invoice,
+      id: selectedTaskService.id,
+      customerName: selectedTaskService.customerName,
+      noWa: selectedTaskService.noWa,
+      complaint: selectedTaskService.complaint,
+      passwordPattern: selectedTaskService.passwordPattern,
+      imei: selectedTaskService.imei,
+      status: selectedTaskService.status,
+      checkinAt: selectedTaskService.checkinAt,
+      doneAt: selectedTaskService.doneAt,
+      hpCatalog: selectedTaskService.hpCatalog,
+      items: selectedTaskService.items,
+      invoice: selectedTaskService.invoice,
     };
-  }
+  }, [selectedTaskService]);
 
   function handleOpenTaskDetail(service: TechnicianTaskService) {
     setSelectedTaskService(service);
@@ -444,12 +457,12 @@ export default function TechnicianPage() {
             <SheetTitle>Task Details</SheetTitle>
           </SheetHeader>
 
-          {selectedTaskService && (
+          {selectedTaskAsItem && (
             <div className="px-2 mb-2">
               <ServiceTaskCard
-                task={convertToServiceTaskItem(selectedTaskService)}
+                task={selectedTaskAsItem}
                 variant="active"
-                onRefresh={fetchDashboardData}
+                onRefresh={() => fetchDashboardData(true)}
               />
             </div>
           )}

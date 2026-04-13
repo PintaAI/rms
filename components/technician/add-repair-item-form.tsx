@@ -32,6 +32,10 @@ interface AddRepairItemFormProps {
   servicePricelists: Array<{ id: string; title: string; defaultPrice: number }>;
   onSuccess: () => void;
   onError: (error: string) => void;
+  /** Called immediately before the server request with the optimistic item */
+  onAddItem?: (item: { id: string; type: string; name: string; qty: number; price: number }) => void;
+  /** Called when the server request fails so the caller can revert the optimistic add */
+  onAddItemError?: () => void;
 }
 
 export function AddRepairItemForm({
@@ -42,6 +46,8 @@ export function AddRepairItemForm({
   servicePricelists,
   onSuccess,
   onError,
+  onAddItem,
+  onAddItemError,
 }: AddRepairItemFormProps) {
   const [itemType, setItemType] = useState<"sparepart" | "service">("sparepart");
   const [selectedSparepartId, setSelectedSparepartId] = useState<string>("");
@@ -93,6 +99,16 @@ export function AddRepairItemForm({
 
     setIsAddingItem(true);
 
+    // Build the optimistic item and notify the parent immediately
+    const newItem = {
+      id: `temp-${Date.now()}`,
+      type: itemType,
+      name: itemName || "",
+      qty: parseInt(itemQty, 10),
+      price: parseInt(itemPrice, 10),
+    };
+    onAddItem?.(newItem);
+
     try {
       const result = await addServiceItem({
         serviceId,
@@ -107,10 +123,14 @@ export function AddRepairItemForm({
         handleOpenChange(false);
         onSuccess();
       } else {
+        // Revert the optimistic add in the parent
+        onAddItemError?.();
         onError(result.error || "Failed to add item");
       }
     } catch (err) {
       console.error("Error adding item:", err);
+      // Revert the optimistic add in the parent
+      onAddItemError?.();
       onError("Failed to add item");
     } finally {
       setIsAddingItem(false);

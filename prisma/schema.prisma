@@ -49,6 +49,7 @@ model Toko {
   name      String
   address   String?
   phone     String?
+  logoUrl   String?
   status    TokoStatus @default(active)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt

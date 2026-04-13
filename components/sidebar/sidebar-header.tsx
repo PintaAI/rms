@@ -91,7 +91,7 @@ export function SidebarHeaderComponent() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="gap-3 cursor-pointer"
-                  onClick={() => router.push("/dashboard")}
+                  onClick={() => router.push("/dashboard/admin/toko")}
                 >
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                     <RiSettings4Line className="h-4 w-4" />

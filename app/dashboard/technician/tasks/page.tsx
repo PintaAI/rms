@@ -22,8 +22,11 @@ export default function TechnicianTasksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  async function fetchTasks() {
-    setIsLoading(true);
+  async function fetchTasks(silent = false) {
+    // silent = true: background re-fetch after optimistic update,
+    // do NOT show loading skeleton so cards stay mounted and
+    // local optimistic state is not destroyed by unmount.
+    if (!silent) setIsLoading(true);
     setError(null);
 
     try {
@@ -37,7 +40,7 @@ export default function TechnicianTasksPage() {
       console.error("Error fetching tasks:", err);
       setError("Failed to load tasks");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }
 
@@ -49,7 +52,7 @@ export default function TechnicianTasksPage() {
   const activeTasks = tasks.filter((t) => t.status === "received" || t.status === "repairing");
   const completedTasks = tasks.filter((t) => t.status === "done" || t.status === "picked_up");
 
-  // Loading state
+  // Loading state – only shown on initial load, not on silent refreshes
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -109,7 +112,7 @@ export default function TechnicianTasksPage() {
                 key={task.id}
                 task={task}
                 variant="active"
-                onRefresh={fetchTasks}
+                onRefresh={() => fetchTasks(true)}
               />
             ))
           )}
@@ -130,7 +133,7 @@ export default function TechnicianTasksPage() {
                 key={task.id}
                 task={task}
                 variant="completed"
-                onRefresh={fetchTasks}
+                onRefresh={() => fetchTasks(true)}
               />
             ))
           )}

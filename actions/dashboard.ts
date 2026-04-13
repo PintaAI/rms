@@ -54,6 +54,7 @@ export interface TechnicianTaskService {
   passwordPattern: string | null;
   imei: string | null;
   hpCatalog: {
+    id: string;
     modelName: string;
     brand: {
       name: string;
@@ -617,9 +618,12 @@ export interface ServiceListItem {
     grandTotal: number;
     paymentStatus: string;
   } | null;
+  createdBy?: {
+    name: string;
+  };
 }
 
-export async function getStaffServiceList(): Promise<{
+export async function getStaffServiceList(tokoId?: string): Promise<{
   success: boolean;
   data?: ServiceListItem[];
   error?: string;
@@ -640,16 +644,24 @@ export async function getStaffServiceList(): Promise<{
       return { success: false, error: "User not found" };
     }
 
-    if (user.role !== "staff") {
+    // Staff and technician can view their toko's services
+    // Admin can view any toko's services
+    const targetTokoId = tokoId || user.tokoId;
+    
+    if (!targetTokoId) {
+      return { success: false, error: "No toko specified" };
+    }
+
+    if (user.role === "staff" || user.role === "technician") {
+      if (user.tokoId !== targetTokoId) {
+        return { success: false, error: "Access denied" };
+      }
+    } else if (user.role !== "admin") {
       return { success: false, error: "Access denied" };
     }
 
-    if (!user.tokoId) {
-      return { success: false, error: "User is not assigned to a toko" };
-    }
-
     const services = await prisma.service.findMany({
-      where: { tokoId: user.tokoId },
+      where: { tokoId: targetTokoId },
       orderBy: { checkinAt: "desc" },
       select: {
         id: true,
@@ -672,6 +684,11 @@ export async function getStaffServiceList(): Promise<{
             id: true,
             grandTotal: true,
             paymentStatus: true,
+          },
+        },
+        createdBy: {
+          select: {
+            name: true,
           },
         },
       },
@@ -1165,6 +1182,7 @@ export async function getTechnicianDashboardData(): Promise<{
           imei: true,
           hpCatalog: {
             select: {
+              id: true,
               modelName: true,
               brand: {
                 select: {
@@ -1308,6 +1326,7 @@ export interface TechnicianTaskItem {
   checkinAt: Date;
   doneAt: Date | null;
   hpCatalog: {
+    id: string;
     modelName: string;
     brand: {
       name: string;
@@ -1374,6 +1393,7 @@ export async function getTechnicianTasks(): Promise<{
         doneAt: true,
         hpCatalog: {
           select: {
+            id: true,
             modelName: true,
             brand: { select: { name: true } },
           },
@@ -1633,8 +1653,8 @@ export async function removeServiceItem(itemId: string): Promise<{
   }
 }
 
-// Get spareparts for technician (from their toko)
-export async function getTechnicianSpareparts(): Promise<{
+// Get spareparts for technician (from their toko), filtered by device compatibility
+export async function getTechnicianSpareparts(hpCatalogId?: string): Promise<{
   success: boolean;
   data?: Array<{
     id: string;
@@ -1668,8 +1688,24 @@ export async function getTechnicianSpareparts(): Promise<{
       return { success: false, error: "User is not assigned to a toko" };
     }
 
+    // Build the where clause: filter by toko and (universal OR compatible with device)
+    const whereClause: {
+      tokoId: string;
+      OR?: Array<{ isUniversal: boolean } | { compatibilities: { some: { hpCatalogId: string } } }>;
+    } = {
+      tokoId: user.tokoId,
+    };
+
+    // If hpCatalogId is provided, filter to only universal or compatible spareparts
+    if (hpCatalogId) {
+      whereClause.OR = [
+        { isUniversal: true },
+        { compatibilities: { some: { hpCatalogId } } },
+      ];
+    }
+
     const spareparts = await prisma.sparepart.findMany({
-      where: { tokoId: user.tokoId },
+      where: whereClause,
       orderBy: { name: "asc" },
       select: {
         id: true,
