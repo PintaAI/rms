@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/auth-provider";
 import { signOut } from "@/lib/auth-client";
 import { RiLogoutBoxRLine, RiUser3Line, RiArrowUpSLine, RiPaletteLine, RiBookOpenLine } from "@remixicon/react";
@@ -54,6 +55,14 @@ export function SidebarFooterComponent() {
   const user = session.user;
   const role = (user as any).role || "staff";
 
+  const roleVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    admin: "destructive",
+    staff: "secondary",
+    technician: "default",
+  };
+
+  const roleVariant = roleVariants[role] || "secondary";
+
   return (
     <>
       <SidebarSeparator />
@@ -80,7 +89,7 @@ export function SidebarFooterComponent() {
                     )}
                     <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                       <span className="font-medium">{user.name || user.email}</span>
-                      <span className="text-xs text-muted-foreground capitalize">{role}</span>
+                      <Badge variant={roleVariant} className="text-xs capitalize">{role}</Badge>
                     </div>
                     <RiArrowUpSLine className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
                   </SidebarMenuButton>

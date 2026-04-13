@@ -9,7 +9,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { RiDashboardLine, RiFileListLine, RiToolsLine } from "@remixicon/react";
+import { RiDashboardLine, RiFileListLine, RiToolsLine, RiCheckboxCircleLine } from "@remixicon/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -23,6 +23,11 @@ const staffMenuItems = [
     title: "Services",
     href: "/dashboard/staff/services",
     icon: RiFileListLine,
+  },
+  {
+    title: "Completed",
+    href: "/dashboard/staff/completed",
+    icon: RiCheckboxCircleLine,
   },
   {
     title: "Sparepart",

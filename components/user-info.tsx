@@ -11,12 +11,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { RiLogoutBoxRLine, RiUser3Line } from "@remixicon/react";
 import { ModeToggle } from "@/components/theme-toggle";
 
 export function UserInfo() {
   const { session, isPending } = useAuth();
-  const router = useRouter();
 
   const handleSignOut = async () => {
     await signOut();
@@ -40,12 +40,20 @@ export function UserInfo() {
   const user = session.user;
   const role = (user as any).role || "staff";
 
+  const roleVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    admin: "destructive",
+    staff: "secondary",
+    technician: "default",
+  };
+
+  const roleVariant = roleVariants[role] || "secondary";
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity outline-none">
         <div className="flex flex-col items-end">
           <span className="text-sm font-medium">{user.name || user.email}</span>
-          <span className="text-xs text-muted-foreground capitalize">{role}</span>
+          <Badge variant={roleVariant} className="text-xs capitalize">{role}</Badge>
         </div>
         <Avatar>
           {user.image && <AvatarImage src={user.image} alt={user.name || "User"} />}

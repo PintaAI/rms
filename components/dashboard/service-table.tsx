@@ -29,7 +29,7 @@ import {
 } from "react-icons/si";
 import { FaMobileAlt } from "react-icons/fa";
 import { MdSmartphone } from "react-icons/md";
-import { RiUserStarLine, RiUserLine, RiMoreLine } from "@remixicon/react";
+import { RiUserStarLine, RiUserLine, RiMoreLine, RiMoneyDollarCircleLine } from "@remixicon/react";
 
 // Brand icon mapping - maps brand names to their corresponding icons
 const brandIconMap: Record<string, React.ReactNode> = {
@@ -142,14 +142,19 @@ interface ServiceTableProps {
   emptyMessage?: string;
 }
 
+interface ExtendedServiceTableProps extends ServiceTableProps {
+  onMarkPaidClick?: (invoiceId: string, serviceId: string) => void;
+}
+
 export function ServiceTable({
   services,
   showInvoice = true,
   showCreatedBy = false,
   onTechnicianClick,
   onMoreClick,
+  onMarkPaidClick,
   emptyMessage = "No services found",
-}: ServiceTableProps) {
+}: ExtendedServiceTableProps) {
   return (
     <Table>
       <TableHeader>
@@ -230,6 +235,16 @@ export function ServiceTable({
                       {service.technician.name}
                     </Badge>
                   )
+                ) : onTechnicianClick ? (
+                  <button
+                    onClick={() => onTechnicianClick(service)}
+                    className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+                  >
+                    <Badge variant="secondary" className="cursor-pointer">
+                      <RiUserLine className="h-3 w-3 mr-1" />
+                      Unassigned
+                    </Badge>
+                  </button>
                 ) : (
                   <Badge variant="secondary">
                     <RiUserLine className="h-3 w-3 mr-1" />
@@ -240,16 +255,28 @@ export function ServiceTable({
               {showInvoice && (
                 <TableCell>
                   {service.invoice ? (
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">
-                        {formatCurrency(service.invoice.grandTotal)}
-                      </span>
-                      <Badge
-                        variant={paymentStatusColors[service.invoice.paymentStatus] || "outline"}
-                        className="w-fit mt-1"
-                      >
-                        {service.invoice.paymentStatus}
-                      </Badge>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">
+                          {formatCurrency(service.invoice.grandTotal)}
+                        </span>
+                        <Badge
+                          variant={paymentStatusColors[service.invoice.paymentStatus] || "outline"}
+                          className="w-fit mt-1"
+                        >
+                          {service.invoice.paymentStatus}
+                        </Badge>
+                      </div>
+                      {service.invoice.paymentStatus === "unpaid" && onMarkPaidClick && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onMarkPaidClick(service.invoice!.id, service.id)}
+                        >
+                          <RiMoneyDollarCircleLine className="h-4 w-4 mr-1" />
+                          Mark Paid
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <span className="text-muted-foreground">-</span>

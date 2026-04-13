@@ -701,6 +701,300 @@ export async function getStaffServiceList(tokoId?: string): Promise<{
   }
 }
 
+// Get completed services (status: done) for staff
+export async function getCompletedServices(tokoId?: string): Promise<{
+  success: boolean;
+  data?: ServiceListItem[];
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, tokoId: true, role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Staff and technician can view their toko's services
+    // Admin can view any toko's services
+    const targetTokoId = tokoId || user.tokoId;
+    
+    if (!targetTokoId) {
+      return { success: false, error: "No toko specified" };
+    }
+
+    if (user.role === "staff" || user.role === "technician") {
+      if (user.tokoId !== targetTokoId) {
+        return { success: false, error: "Access denied" };
+      }
+    } else if (user.role !== "admin") {
+      return { success: false, error: "Access denied" };
+    }
+
+    const services = await prisma.service.findMany({
+      where: {
+        tokoId: targetTokoId,
+        status: "done"  // Only completed services awaiting pickup
+      },
+      orderBy: { doneAt: "desc" },
+      select: {
+        id: true,
+        customerName: true,
+        noWa: true,
+        complaint: true,
+        status: true,
+        checkinAt: true,
+        doneAt: true,
+        checkoutAt: true,
+        hpCatalog: {
+          select: {
+            modelName: true,
+            brand: { select: { name: true } },
+          },
+        },
+        technician: { select: { id: true, name: true } },
+        invoice: {
+          select: {
+            id: true,
+            grandTotal: true,
+            paymentStatus: true,
+          },
+        },
+        createdBy: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return { success: true, data: services };
+  } catch (error) {
+    console.error("Error fetching completed services:", error);
+    return { success: false, error: "Failed to fetch completed services" };
+  }
+}
+
+// Get picked up services history (status: picked_up)
+export async function getPickedUpServices(tokoId?: string): Promise<{
+  success: boolean;
+  data?: ServiceListItem[];
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, tokoId: true, role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    const targetTokoId = tokoId || user.tokoId;
+    
+    if (!targetTokoId) {
+      return { success: false, error: "No toko specified" };
+    }
+
+    if (user.role === "staff" || user.role === "technician") {
+      if (user.tokoId !== targetTokoId) {
+        return { success: false, error: "Access denied" };
+      }
+    } else if (user.role !== "admin") {
+      return { success: false, error: "Access denied" };
+    }
+
+    const services = await prisma.service.findMany({
+      where: {
+        tokoId: targetTokoId,
+        status: "picked_up"
+      },
+      orderBy: { checkoutAt: "desc" },
+      select: {
+        id: true,
+        customerName: true,
+        noWa: true,
+        complaint: true,
+        status: true,
+        checkinAt: true,
+        doneAt: true,
+        checkoutAt: true,
+        hpCatalog: {
+          select: {
+            modelName: true,
+            brand: { select: { name: true } },
+          },
+        },
+        technician: { select: { id: true, name: true } },
+        invoice: {
+          select: {
+            id: true,
+            grandTotal: true,
+            paymentStatus: true,
+          },
+        },
+        createdBy: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return { success: true, data: services };
+  } catch (error) {
+    console.error("Error fetching picked up services:", error);
+    return { success: false, error: "Failed to fetch picked up services" };
+  }
+}
+
+// Mark service as picked up (staff only)
+export async function markServiceAsPickedUp(
+  serviceId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, role: true, tokoId: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only staff and admin can mark as picked up
+    if (user.role !== "staff" && user.role !== "admin") {
+      return { success: false, error: "Only staff can mark services as picked up" };
+    }
+
+    const service = await prisma.service.findUnique({
+      where: { id: serviceId },
+      select: { id: true, tokoId: true, status: true },
+    });
+
+    if (!service) {
+      return { success: false, error: "Service not found" };
+    }
+
+    // Check authorization
+    if (user.role === "staff" && user.tokoId !== service.tokoId) {
+      return { success: false, error: "Access denied" };
+    }
+
+    // Only services with status "done" can be marked as picked up
+    if (service.status !== "done") {
+      return { success: false, error: "Only completed services can be marked as picked up" };
+    }
+
+    // Update status to picked_up and set checkoutAt
+    await prisma.service.update({
+      where: { id: serviceId },
+      data: {
+        status: "picked_up",
+        checkoutAt: new Date(),
+      },
+    });
+
+    // Mark invoice as paid if it exists (separate operation to avoid error if no invoice)
+    await prisma.invoice.updateMany({
+      where: {
+        serviceId: serviceId,
+      },
+      data: {
+        paymentStatus: "paid",
+        paidAt: new Date(),
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error marking service as picked up:", error);
+    return { success: false, error: "Failed to mark service as picked up" };
+  }
+}
+
+// Mark invoice as paid
+export async function markInvoiceAsPaid(
+  invoiceId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, role: true, tokoId: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only staff and admin can mark invoices as paid
+    if (user.role !== "staff" && user.role !== "admin") {
+      return { success: false, error: "Only staff can mark invoices as paid" };
+    }
+
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { id: true, service: { select: { tokoId: true } } },
+    });
+
+    if (!invoice) {
+      return { success: false, error: "Invoice not found" };
+    }
+
+    // Check authorization
+    if (user.role === "staff" && user.tokoId !== invoice.service.tokoId) {
+      return { success: false, error: "Access denied" };
+    }
+
+    // Update invoice payment status
+    await prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        paymentStatus: "paid",
+        paidAt: new Date(),
+      },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error marking invoice as paid:", error);
+    return { success: false, error: "Failed to mark invoice as paid" };
+  }
+}
+
 // Create a new service ticket (staff only)
 export async function createService(data: {
   hpCatalogId: string;
@@ -1575,6 +1869,32 @@ export async function addServiceItem(data: {
         },
       });
     }
+
+    // Create or update invoice with calculated grand total
+    await prisma.$transaction(async (tx) => {
+      // Calculate total from all service items
+      const items = await tx.serviceItem.aggregate({
+        where: { serviceId: data.serviceId },
+        _sum: {
+          price: true,
+        },
+      });
+
+      const grandTotal = (items._sum.price as number) || 0;
+
+      // Upsert invoice (create if not exists, update if exists)
+      await tx.invoice.upsert({
+        where: { serviceId: data.serviceId },
+        create: {
+          serviceId: data.serviceId,
+          grandTotal,
+          paymentStatus: "unpaid",
+        },
+        update: {
+          grandTotal,
+        },
+      });
+    });
 
     return { success: true };
   } catch (error) {

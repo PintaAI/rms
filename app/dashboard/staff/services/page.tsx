@@ -17,6 +17,17 @@ import {
 } from "@/actions/dashboard";
 import { AddServiceForm } from "@/components/staff/add-service-form";
 import { RiAddLine, RiRefreshLine } from "@remixicon/react";
+import { markInvoiceAsPaid } from "@/actions/dashboard";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function StaffServicesPage() {
   const { selectedToko } = useToko();
@@ -24,6 +35,38 @@ export default function StaffServicesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isPaidDialogOpen, setIsPaidDialogOpen] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleMarkPaidClick = (invoiceId: string, serviceId: string) => {
+    setSelectedInvoiceId(invoiceId);
+    setSelectedServiceId(serviceId);
+    setIsPaidDialogOpen(true);
+  };
+
+  const handleConfirmPaid = async () => {
+    if (!selectedInvoiceId) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await markInvoiceAsPaid(selectedInvoiceId);
+      if (result.success) {
+        fetchData();
+        setIsPaidDialogOpen(false);
+        setSelectedInvoiceId(null);
+        setSelectedServiceId(null);
+      } else {
+        alert(result.error || "Failed to mark invoice as paid");
+      }
+    } catch (error) {
+      console.error("Error marking invoice as paid:", error);
+      alert("Failed to mark invoice as paid");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     if (!selectedToko) {
@@ -137,10 +180,29 @@ export default function StaffServicesPage() {
             services={services}
             showInvoice={true}
             showCreatedBy={true}
+            onMarkPaidClick={handleMarkPaidClick}
             emptyMessage="No services found"
           />
         </CardContent>
       </Card>
+
+      {/* Mark as Paid Dialog */}
+      <AlertDialog open={isPaidDialogOpen} onOpenChange={setIsPaidDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Payment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mark this invoice as paid? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPaid} disabled={isProcessing}>
+              {isProcessing ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
