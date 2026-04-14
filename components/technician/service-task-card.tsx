@@ -332,13 +332,20 @@ export function ServiceTaskCard({
     0
   );
 
-  // Handler: mark as done directly
+  // ─── Done dialog ────────────────────────────────────────────────────────────
+  const [doneDialogOpen, setDoneDialogOpen] = useState(false);
+  const [doneNote, setDoneNote] = useState("");
   const [isMarkingDone, setIsMarkingDone] = useState(false);
 
   // ─── Failed dialog ─────────────────────────────────────────────────────────
   const [failedDialogOpen, setFailedDialogOpen] = useState(false);
   const [failedNote, setFailedNote] = useState("");
   const [isMarkingFailed, setIsMarkingFailed] = useState(false);
+
+  function openDoneDialog() {
+    setDoneNote("");
+    setDoneDialogOpen(true);
+  }
 
   const handleMarkDone = useCallback(async () => {
     setIsMarkingDone(true);
@@ -356,8 +363,13 @@ export function ServiceTaskCard({
     }));
 
     try {
-      const result = await updateServiceStatus(snapshot.id, "done");
+      const result = await updateServiceStatus(
+        snapshot.id,
+        "done",
+        doneNote.trim() || undefined
+      );
       if (result.success) {
+        setDoneDialogOpen(false);
         pendingMutationsRef.current -= 1;
         onRefresh?.();
       } else {
@@ -371,7 +383,7 @@ export function ServiceTaskCard({
     } finally {
       setIsMarkingDone(false);
     }
-  }, [onRefresh]);
+  }, [doneNote, onRefresh]);
 
   function openFailedDialog() {
     setFailedNote("");
@@ -618,12 +630,11 @@ export function ServiceTaskCard({
                 </Button>
                 <Button
                   size="sm"
-                  onClick={handleMarkDone}
-                  disabled={isMarkingDone}
+                  onClick={openDoneDialog}
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <RiCheckDoubleLine className="h-4 w-4 mr-1" />
-                  {isMarkingDone ? "Marking Done..." : "Done"}
+                  Done
                 </Button>
               </div>
             )}
@@ -720,6 +731,45 @@ export function ServiceTaskCard({
             </Button>
             <Button onClick={handleUndoStatus} disabled={isUndoingStatus}>
               {isUndoingStatus ? "Updating..." : "Confirm Undo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Done Dialog */}
+      <Dialog open={doneDialogOpen} onOpenChange={setDoneDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Service as Done</DialogTitle>
+            <DialogDescription>
+              Optionally add a service note before completing this service
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="done-note">Service Note (optional)</Label>
+              <textarea
+                id="done-note"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1.5 resize-none"
+                placeholder="Add any notes about the repair..."
+                value={doneNote}
+                onChange={(e) => setDoneNote(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDoneDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleMarkDone}
+              disabled={isMarkingDone}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isMarkingDone ? "Marking Done..." : "Confirm Done"}
             </Button>
           </DialogFooter>
         </DialogContent>
