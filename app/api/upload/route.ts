@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
   try {
     // Check if blob storage is configured
     if (!isBlobConfigured()) {
+      console.error("[Upload API] Blob storage is not configured");
       return NextResponse.json(
         { error: "Blob storage is not configured. Set rms_READ_WRITE_TOKEN environment variable." },
         { status: 500 }
@@ -108,7 +109,15 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File | null;
     const pathname = formData.get("pathname") as string | null;
 
+    console.log("[Upload API] Received upload request:", {
+      fileName: file?.name,
+      fileType: file?.type,
+      fileSize: file?.size,
+      requestedPathname: pathname,
+    });
+
     if (!file) {
+      console.error("[Upload API] No file provided in request");
       return NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
@@ -118,10 +127,18 @@ export async function POST(request: NextRequest) {
     // Generate pathname if not provided
     const blobPathname = pathname || `uploads/${Date.now()}-${file.name}`;
 
+    console.log("[Upload API] Uploading to path:", blobPathname);
+
     // Upload the file
     const blob = await uploadBlob(blobPathname, file, {
       access: "public",
       contentType: file.type || undefined,
+    });
+
+    console.log("[Upload API] Upload successful:", {
+      url: blob.url,
+      pathname: blob.pathname,
+      contentType: blob.contentType,
     });
 
     return NextResponse.json({
@@ -134,7 +151,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Upload error:", error);
+    console.error("[Upload API] Upload error:", error);
     return NextResponse.json(
       { error: "Failed to upload file" },
       { status: 500 }

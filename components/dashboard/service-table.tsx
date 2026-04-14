@@ -45,9 +45,9 @@ const statusLabels: Record<string, string> = {
 };
 
 // Payment status colors
-const paymentStatusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+const paymentStatusColors: Record<string, "default" | "secondary" | "destructive" | "outline" | "success"> = {
   unpaid: "destructive",
-  paid: "default",
+  paid: "success",
 };
 
 // Format date
@@ -196,9 +196,14 @@ export function ServiceTable({
           services.map((service) => (
             <TableRow key={service.id}>
               <TableCell className="font-medium">
-                <div className="flex flex-col">
-                  <span>{service.customerName || "-"}</span>
-                  <span className="text-xs text-muted-foreground">{service.noWa}</span>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
+                    <RiUserLine className="h-4 w-4" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span>{service.customerName || "-"}</span>
+                    <span className="text-xs text-muted-foreground">{service.noWa}</span>
+                  </div>
                 </div>
               </TableCell>
               <TableCell>
@@ -221,7 +226,17 @@ export function ServiceTable({
               </TableCell>
               {showCreatedBy && (
                 <TableCell>
-                  {service.createdBy?.name || "-"}
+                  {service.createdBy?.name ? (
+                    <Badge variant="default">
+                      <RiUserStarLine className="h-3 w-3 mr-1" />
+                      {service.createdBy.name}
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      <RiUserLine className="h-3 w-3 mr-1" />
+                      Unknown
+                    </Badge>
+                  )}
                 </TableCell>
               )}
               <TableCell>

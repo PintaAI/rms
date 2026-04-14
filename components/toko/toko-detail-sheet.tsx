@@ -245,8 +245,13 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                         <img
                           src={logoPreview}
                           alt="Logo preview"
-                          className="w-full h-full object-cover"
+                          className={`w-full h-full object-cover ${isUploadingLogo ? "opacity-50" : ""}`}
                         />
+                        {isUploadingLogo && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                            <RiLoader4Line className="w-8 h-8 animate-spin text-primary" />
+                          </div>
+                        )}
                         <button
                           type="button"
                           onClick={handleRemoveLogo}

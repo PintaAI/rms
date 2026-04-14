@@ -45,8 +45,16 @@ export function SidebarHeaderComponent() {
                     size="lg"
                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                   >
-                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <RiStore2Line className="size-4" />
+                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground overflow-hidden">
+                      {selectedToko?.logoUrl ? (
+                        <img
+                          src={selectedToko.logoUrl}
+                          alt={`${selectedToko.name} logo`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <RiStore2Line className="size-4" />
+                      )}
                     </div>
                     <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                       <span className="font-semibold">
@@ -73,8 +81,16 @@ export function SidebarHeaderComponent() {
                       className="gap-3 p-3"
                       onClick={() => setSelectedToko(toko)}
                     >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <RiStore2Line className="h-4 w-4" />
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary overflow-hidden">
+                        {toko.logoUrl ? (
+                          <img
+                            src={toko.logoUrl}
+                            alt={`${toko.name} logo`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <RiStore2Line className="h-4 w-4" />
+                        )}
                       </div>
                       <div className="flex flex-col flex-1">
                         <span className="text-sm font-medium">{toko.name}</span>
@@ -113,8 +129,16 @@ export function SidebarHeaderComponent() {
                     size="lg"
                     className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                   >
-                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <RiStore2Line className="size-4" />
+                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground overflow-hidden">
+                      {selectedToko?.logoUrl ? (
+                        <img
+                          src={selectedToko.logoUrl}
+                          alt={`${selectedToko.name} logo`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <RiStore2Line className="size-4" />
+                      )}
                     </div>
                     <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                       <span className="font-semibold">

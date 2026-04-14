@@ -63,7 +63,7 @@ export function TokoCard({ toko, onSuccess }: TokoCardProps) {
               </div>
               {/* Status indicator */}
               <div
-                className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${
+                className={`absolute bottom-1 right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card ${
                   toko.status === "active" ? "bg-emerald-500" : "bg-muted-foreground"
                 }`}
                 title={toko.status === "active" ? "Active" : "Inactive"}
