@@ -155,14 +155,24 @@ function formatCurrency(value: number): string {
 
 interface AdminOverviewProps {
   initialServices: ServiceListItem[];
-  timeFilter: "daily" | "weekly" | "monthly";
+  timeFilter: "daily" | "weekly" | "monthly" | "all";
   pagination: PaginatedResult<ServiceListItem>;
+  dashboardStats?: {
+    totalServices: number;
+    receivedCount: number;
+    repairingCount: number;
+    doneCount: number;
+    pickedUpCount: number;
+    totalRevenue: number;
+    unpaidInvoices: number;
+  };
 }
 
 export function AdminOverview({
   initialServices,
   timeFilter: initialTimeFilter,
   pagination,
+  dashboardStats: initialDashboardStats,
 }: AdminOverviewProps) {
   const { selectedToko } = useToko();
   const router = useRouter();
@@ -172,7 +182,7 @@ export function AdminOverview({
   const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
   const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly">(
+  const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly" | "all">(
     initialTimeFilter
   );
 
@@ -215,7 +225,7 @@ export function AdminOverview({
   };
 
   // Handle time filter change - updates URL and triggers server refetch
-  const handleTimeFilterChange = (newFilter: "daily" | "weekly" | "monthly") => {
+  const handleTimeFilterChange = (newFilter: "daily" | "weekly" | "monthly" | "all") => {
     startTransition(() => {
       setTimeFilter(newFilter);
       const params = new URLSearchParams(searchParams.toString());
@@ -260,13 +270,15 @@ export function AdminOverview({
   // Data is fetched server-side and passed as props
   const filteredServices = initialServices;
 
-  // Calculate stats based on filtered services
+  // Use dashboard stats from server (includes revenue) with fallback
   const stats = {
-    total: filteredServices.length,
-    received: filteredServices.filter((s) => s.status === "received").length,
-    repairing: filteredServices.filter((s) => s.status === "repairing").length,
-    done: filteredServices.filter((s) => s.status === "done").length,
-    pickedUp: filteredServices.filter((s) => s.status === "picked_up").length,
+    total: initialDashboardStats?.totalServices ?? filteredServices.length,
+    received: initialDashboardStats?.receivedCount ?? filteredServices.filter((s) => s.status === "received").length,
+    repairing: initialDashboardStats?.repairingCount ?? filteredServices.filter((s) => s.status === "repairing").length,
+    done: initialDashboardStats?.doneCount ?? filteredServices.filter((s) => s.status === "done").length,
+    pickedUp: initialDashboardStats?.pickedUpCount ?? filteredServices.filter((s) => s.status === "picked_up").length,
+    totalRevenue: initialDashboardStats?.totalRevenue ?? 0,
+    unpaidInvoices: initialDashboardStats?.unpaidInvoices ?? 0,
   };
 
 
@@ -328,6 +340,7 @@ export function AdminOverview({
             <TabsTrigger value="daily">Daily</TabsTrigger>
             <TabsTrigger value="weekly">Weekly</TabsTrigger>
             <TabsTrigger value="monthly">Monthly</TabsTrigger>
+            <TabsTrigger value="all">All Time</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -357,6 +370,22 @@ export function AdminOverview({
           value={stats.done}
           description="Completed services"
           icon={<RiCheckLine className="h-4 w-4" />}
+        />
+      </div>
+
+      {/* Revenue Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <StatCard
+          title={`${timeFilter === "daily" ? "Today's" : timeFilter === "weekly" ? "This Week's" : timeFilter === "monthly" ? "This Month's" : "All-Time"} Revenue`}
+          value={formatCurrency(stats.totalRevenue)}
+          description={timeFilter === "all" ? "Total revenue from all paid invoices" : `Based on ${timeFilter} filter`}
+          icon={<RiMoneyDollarCircleLine className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Unpaid Invoices"
+          value={stats.unpaidInvoices}
+          description="Pending payments"
+          icon={<RiTimeLine className="h-4 w-4" />}
         />
       </div>
 

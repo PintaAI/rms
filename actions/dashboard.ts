@@ -1312,3 +1312,161 @@ export async function assignTechnicianToService(
     return { success: false, error: "Failed to assign technician" };
   }
 }
+
+// Time filter type for admin dashboard
+export type AdminTimeFilter = "daily" | "weekly" | "monthly" | "all";
+
+// Admin dashboard stats with time filtering
+export interface AdminDashboardStats {
+  totalServices: number;
+  receivedCount: number;
+  repairingCount: number;
+  doneCount: number;
+  pickedUpCount: number;
+  totalRevenue: number;
+  unpaidInvoices: number;
+}
+
+// Get admin dashboard stats with time filtering
+export async function getAdminDashboardStats(
+  tokoId: string | undefined,
+  timeFilter: AdminTimeFilter = "daily"
+): Promise<{
+  success: boolean;
+  data?: AdminDashboardStats;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { tokoId: true, role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Determine target toko
+    const targetTokoId = tokoId || user.tokoId;
+    
+    if (!targetTokoId) {
+      // Return zeros if no toko selected (admin without selection)
+      return {
+        success: true,
+        data: {
+          totalServices: 0,
+          receivedCount: 0,
+          repairingCount: 0,
+          doneCount: 0,
+          pickedUpCount: 0,
+          totalRevenue: 0,
+          unpaidInvoices: 0,
+        },
+      };
+    }
+
+    // Check authorization
+    if (user.role !== "admin" && user.tokoId !== targetTokoId) {
+      return { success: false, error: "Access denied" };
+    }
+
+    // Build time filter - for "all" we don't apply any date filter
+    const now = new Date();
+    let startDate: Date | undefined;
+    let applyTimeFilter = true;
+
+    switch (timeFilter) {
+      case "daily":
+        startDate = new Date(now);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case "weekly":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "monthly":
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case "all":
+        applyTimeFilter = false;
+        break;
+    }
+
+    // Build where condition based on time filter
+    const timeFilterWhere = applyTimeFilter && startDate
+      ? { checkinAt: { gte: startDate } }
+      : {};
+
+    // Get service counts by status with time filter
+    const [statusCounts, revenueResult, unpaidInvoices] = await Promise.all([
+      prisma.service.groupBy({
+        by: ["status"],
+        where: {
+          tokoId: targetTokoId,
+          ...timeFilterWhere,
+        },
+        _count: {
+          status: true,
+        },
+      }),
+      // Total revenue from paid invoices within time filter
+      prisma.invoice.aggregate({
+        where: {
+          service: {
+            tokoId: targetTokoId,
+            ...timeFilterWhere,
+          },
+          paymentStatus: "paid",
+        },
+        _sum: {
+          grandTotal: true,
+        },
+      }),
+      // Unpaid invoices count within time filter
+      prisma.invoice.count({
+        where: {
+          service: {
+            tokoId: targetTokoId,
+            ...timeFilterWhere,
+          },
+          paymentStatus: "unpaid",
+        },
+      }),
+    ]);
+
+    // Process status counts
+    const counts = {
+      received: 0,
+      repairing: 0,
+      done: 0,
+      picked_up: 0,
+    };
+
+    statusCounts.forEach((item) => {
+      counts[item.status as keyof typeof counts] = item._count.status;
+    });
+
+    const totalServices = Object.values(counts).reduce((sum, count) => sum + count, 0);
+
+    return {
+      success: true,
+      data: {
+        totalServices,
+        receivedCount: counts.received,
+        repairingCount: counts.repairing,
+        doneCount: counts.done,
+        pickedUpCount: counts.picked_up,
+        totalRevenue: revenueResult._sum.grandTotal || 0,
+        unpaidInvoices,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching admin dashboard stats:", error);
+    return { success: false, error: "Failed to fetch dashboard stats" };
+  }
+}
