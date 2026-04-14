@@ -1,274 +1,41 @@
-"use client";
+import { StaffOverview } from "@/components/dashboard/staff-overview";
+import { getStaffServiceList, type TimeFilter } from "@/actions/staff";
+import { getUser } from "@/lib/get-session";
+import prisma from "@/lib/prisma";
+import { redirect } from "next/navigation";
 
-import { useCallback, useEffect, useState } from "react";
-import { useToko } from "@/components/toko/toko-provider";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ServiceTable } from "@/components/dashboard/service-table";
-import {
-  getStaffServiceList,
-  type ServiceListItem,
-} from "@/actions/dashboard";
-import { AddServiceForm } from "@/components/staff/add-service-form";
-import {
-  RiAddCircleLine,
-  RiFileList3Line,
-  RiTimeLine,
-  RiCheckLine,
-  RiPlayCircleLine,
-  RiCheckboxCircleLine,
-} from "@remixicon/react";
+interface StaffPageProps {
+  searchParams: Promise<{
+    filter?: TimeFilter;
+    page?: string;
+  }>;
+}
 
-export default function StaffPage() {
-  const { selectedToko } = useToko();
-  const [services, setServices] = useState<ServiceListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showAddService, setShowAddService] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
+export default async function StaffPage({ searchParams }: StaffPageProps) {
+  const sessionUser = await getUser();
+  
+  if (!sessionUser) {
+    redirect("/auth");
+  }
 
-  const fetchServices = useCallback(async () => {
-    if (!selectedToko) {
-      setError("No toko selected");
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const result = await getStaffServiceList(selectedToko.id);
-      if (result.success && result.data) {
-        setServices(result.data);
-      } else {
-        setError(result.error || "Failed to load services");
-      }
-    } catch (err) {
-      console.error("Error fetching services:", err);
-      setError("Failed to load services");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedToko]);
-
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
-
-  const handleServiceCreated = useCallback(() => {
-    fetchServices();
-  }, [fetchServices]);
-
-  // Filter services
-  const filteredServices = services.filter((service) => {
-    if (filter === "all") return true;
-    return service.status === filter;
+  // Get user's toko info
+  const user = await prisma.user.findUnique({
+    where: { id: sessionUser.id },
+    select: { tokoId: true, role: true },
   });
 
-  // Calculate stats
-  const stats = {
-    total: services.length,
-    received: services.filter((s) => s.status === "received").length,
-    repairing: services.filter((s) => s.status === "repairing").length,
-    done: services.filter((s) => s.status === "done").length,
-    pickedUp: services.filter((s) => s.status === "picked_up").length,
-  };
-
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-            <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
-          </div>
-        </div>
-        <Card>
-          <CardContent className="py-10">
-            <div className="text-center text-muted-foreground">Loading services...</div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  if (!user || !user.tokoId) {
+    redirect("/auth");
   }
 
-  // No toko selected state
-  if (!selectedToko) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="text-muted-foreground">Select a toko to view services</div>
-      </div>
-    );
-  }
+  // Get time filter and page from search params
+  const params = await searchParams;
+  const timeFilter: TimeFilter = params.filter || "daily";
+  const page = params.page ? parseInt(params.page, 10) : 1;
 
-  // Error state
-  if (error) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-          {error}
-        </div>
-      </div>
-    );
-  }
+  // Fetch services with server-side filtering and pagination
+  const result = await getStaffServiceList(user.tokoId, timeFilter, page, 15);
+  const paginatedData = result.success && result.data ? result.data : { data: [], total: 0, page: 1, pageSize: 15, totalPages: 0 };
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Staff Dashboard</h1>
-          <p className="text-muted-foreground">
-            Overview of your service activities
-          </p>
-        </div>
-        <Button onClick={() => setShowAddService(true)}>
-          <RiAddCircleLine className="h-4 w-4 mr-2" />
-          Add Service
-        </Button>
-      </div>
-
-      {/* Add Service Dialog */}
-      <AddServiceForm
-        open={showAddService}
-        onOpenChange={setShowAddService}
-        onSuccess={handleServiceCreated}
-      />
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-              <RiFileList3Line className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Received
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-secondary/10 flex items-center justify-center text-secondary">
-              <RiTimeLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.received}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              In Progress
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
-              <RiPlayCircleLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.repairing}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Done
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-green-100 dark:bg-green-900/20 flex items-center justify-center text-green-600 dark:text-green-400">
-              <RiCheckLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.done}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Picked Up
-            </CardTitle>
-            <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-              <RiCheckboxCircleLine className="h-4 w-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pickedUp}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filter */}
-      <div className="flex gap-2">
-        <Button
-          variant={filter === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("all")}
-        >
-          All
-        </Button>
-        <Button
-          variant={filter === "received" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("received")}
-        >
-          Received
-        </Button>
-        <Button
-          variant={filter === "repairing" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("repairing")}
-        >
-          In Progress
-        </Button>
-        <Button
-          variant={filter === "done" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("done")}
-        >
-          Done
-        </Button>
-        <Button
-          variant={filter === "picked_up" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("picked_up")}
-        >
-          Picked Up
-        </Button>
-      </div>
-
-      {/* Service List Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Services list </CardTitle>
-          <CardDescription>
-            servis terbaru dari {selectedToko.name}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ServiceTable
-            services={filteredServices}
-            showInvoice={true}
-            showCreatedBy={true}
-            emptyMessage="No services found"
-          />
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <StaffOverview initialServices={paginatedData.data} timeFilter={timeFilter} pagination={paginatedData} />;
 }

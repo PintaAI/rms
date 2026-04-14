@@ -7,7 +7,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 import {
-  DynamicSidebarContent,
+  RoleSidebarContent,
   SidebarHeaderComponent,
   SidebarFooterComponent,
 } from "@/components/sidebar";
@@ -21,7 +21,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeaderComponent />
-        <DynamicSidebarContent />
+        <RoleSidebarContent />
         <SidebarFooterComponent />
         <SidebarRail />
       </Sidebar>

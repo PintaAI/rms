@@ -11,56 +11,22 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  SiApple,
-  SiSamsung,
-  SiXiaomi,
-  SiOppo,
-  SiVivo,
-  SiHuawei,
-  SiOneplus,
-  SiGoogle,
-  SiSony,
-  SiNokia,
-  SiMotorola,
-  SiAsus,
-  SiLenovo,
-  SiLg,
-  SiHonor,
-} from "react-icons/si";
-import { FaMobileAlt } from "react-icons/fa";
-import { MdSmartphone } from "react-icons/md";
-import { RiUserStarLine, RiUserLine, RiMoreLine, RiMoneyDollarCircleLine } from "@remixicon/react";
-
-// Brand icon mapping - maps brand names to their corresponding icons
-const brandIconMap: Record<string, React.ReactNode> = {
-  apple: <SiApple className="h-4 w-4" />,
-  iphone: <SiApple className="h-4 w-4" />,
-  samsung: <SiSamsung className="h-4 w-4" />,
-  xiaomi: <SiXiaomi className="h-4 w-4" />,
-  oppo: <SiOppo className="h-4 w-4" />,
-  vivo: <SiVivo className="h-4 w-4" />,
-  realme: <FaMobileAlt className="h-4 w-4" />,
-  huawei: <SiHuawei className="h-4 w-4" />,
-  oneplus: <SiOneplus className="h-4 w-4" />,
-  google: <SiGoogle className="h-4 w-4" />,
-  sony: <SiSony className="h-4 w-4" />,
-  nokia: <SiNokia className="h-4 w-4" />,
-  motorola: <SiMotorola className="h-4 w-4" />,
-  asus: <SiAsus className="h-4 w-4" />,
-  lenovo: <SiLenovo className="h-4 w-4" />,
-  lg: <SiLg className="h-4 w-4" />,
-  honor: <SiHonor className="h-4 w-4" />,
-  zte: <FaMobileAlt className="h-4 w-4" />,
-  infinix: <FaMobileAlt className="h-4 w-4" />,
-  tecno: <FaMobileAlt className="h-4 w-4" />,
-  itel: <FaMobileAlt className="h-4 w-4" />,
-};
-
-// Function to get brand icon
-function getBrandIcon(brandName: string): React.ReactNode {
-  const normalizedName = brandName.toLowerCase().trim();
-  return brandIconMap[normalizedName] || <MdSmartphone className="h-4 w-4" />;
-}
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getBrandIcon } from "@/lib/brand-icons";
+import {
+  RiUserStarLine,
+  RiUserLine,
+  RiMoreLine,
+  RiMoneyDollarCircleLine,
+  RiPhoneLine,
+  RiCheckLine,
+  RiPencilLine,
+  RiDeleteBinLine,
+} from "@remixicon/react";
 
 // Status badge colors
 const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -85,7 +51,8 @@ const paymentStatusColors: Record<string, "default" | "secondary" | "destructive
 };
 
 // Format date
-function formatDate(date: Date): string {
+function formatDate(date: Date | null | undefined): string {
+  if (!date) return "-";
   return new Intl.DateTimeFormat("id-ID", {
     day: "2-digit",
     month: "short",
@@ -105,14 +72,17 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-// Base service item interface
+// Unified service item interface
 export interface ServiceTableItem {
   id: string;
+  hpCatalogId: string;
   customerName: string | null;
   noWa: string;
   complaint: string;
   status: string;
   checkinAt: Date;
+  doneAt?: Date | null;
+  checkoutAt?: Date | null;
   hpCatalog: {
     modelName: string;
     brand: {
@@ -131,30 +101,69 @@ export interface ServiceTableItem {
   createdBy?: {
     name: string;
   };
+  passwordPattern?: string | null;
+  imei?: string | null;
 }
+
+// Variant determines which columns and actions are shown
+export type ServiceTableVariant = "active" | "completed" | "history";
 
 interface ServiceTableProps {
   services: ServiceTableItem[];
+  variant?: ServiceTableVariant;
+
+  // Column visibility
   showInvoice?: boolean;
   showCreatedBy?: boolean;
+  showTechnician?: boolean;
+
+  // Action callbacks - if not provided, the action button won't show
   onTechnicianClick?: (service: ServiceTableItem) => void;
   onMoreClick?: (service: ServiceTableItem) => void;
-  emptyMessage?: string;
-}
-
-interface ExtendedServiceTableProps extends ServiceTableProps {
+  onEditClick?: (service: ServiceTableItem) => void;
+  onDeleteClick?: (service: ServiceTableItem) => void;
   onMarkPaidClick?: (invoiceId: string, serviceId: string) => void;
+  onPickupClick?: (serviceId: string) => void;
+  onCallClick?: (phone: string, service: ServiceTableItem) => void;
+
+  // UI customization
+  emptyMessage?: string;
 }
 
 export function ServiceTable({
   services,
+  variant = "active",
   showInvoice = true,
   showCreatedBy = false,
+  showTechnician = true,
   onTechnicianClick,
   onMoreClick,
+  onEditClick,
+  onDeleteClick,
   onMarkPaidClick,
+  onPickupClick,
+  onCallClick,
   emptyMessage = "No services found",
-}: ExtendedServiceTableProps) {
+}: ServiceTableProps) {
+  // Determine which columns to show based on variant
+  const showCheckinAt = variant === "active";
+  const showDoneAt = variant === "completed" || variant === "history";
+  const showCheckoutAt = variant === "history";
+  const showActions = variant === "completed";
+
+  // Calculate colspan for empty row
+  const getEmptyColSpan = () => {
+    let colspan = 4; // Customer, Device, Complaint, Status (base columns)
+    if (showCreatedBy) colspan++;
+    if (showTechnician) colspan++;
+    if (showInvoice) colspan++;
+    if (showCheckinAt) colspan++;
+    if (showDoneAt) colspan++;
+    if (showCheckoutAt) colspan++;
+    if (showActions) colspan++;
+    return colspan;
+  };
+
   return (
     <Table>
       <TableHeader>
@@ -164,17 +173,20 @@ export function ServiceTable({
           <TableHead>Complaint</TableHead>
           {showCreatedBy && <TableHead>Created By</TableHead>}
           <TableHead>Status</TableHead>
-          <TableHead>Technician</TableHead>
+          {showTechnician && <TableHead>Technician</TableHead>}
           {showInvoice && <TableHead>Invoice</TableHead>}
-          <TableHead>Check-in</TableHead>
-          <TableHead></TableHead>
+          {showCheckinAt && <TableHead>Check-in</TableHead>}
+          {showDoneAt && <TableHead>Completed At</TableHead>}
+          {showCheckoutAt && <TableHead>Picked Up At</TableHead>}
+          {showActions && <TableHead>Actions</TableHead>}
+          {!showActions && variant !== "history" && <TableHead></TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {services.length === 0 ? (
           <TableRow>
             <TableCell
-              colSpan={showCreatedBy ? 9 : showInvoice ? 8 : 7}
+              colSpan={getEmptyColSpan()}
               className="h-24 text-center"
             >
               {emptyMessage}
@@ -217,41 +229,43 @@ export function ServiceTable({
                   {statusLabels[service.status] || service.status}
                 </Badge>
               </TableCell>
-              <TableCell>
-                {service.technician ? (
-                  onTechnicianClick ? (
+              {showTechnician && (
+                <TableCell>
+                  {service.technician ? (
+                    onTechnicianClick ? (
+                      <button
+                        onClick={() => onTechnicianClick(service)}
+                        className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
+                      >
+                        <Badge variant="default" className="cursor-pointer">
+                          <RiUserStarLine className="h-3 w-3 mr-1" />
+                          {service.technician.name}
+                        </Badge>
+                      </button>
+                    ) : (
+                      <Badge variant="default">
+                        <RiUserStarLine className="h-3 w-3 mr-1" />
+                        {service.technician.name}
+                      </Badge>
+                    )
+                  ) : onTechnicianClick ? (
                     <button
                       onClick={() => onTechnicianClick(service)}
                       className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
                     >
-                      <Badge variant="default" className="cursor-pointer">
-                        <RiUserStarLine className="h-3 w-3 mr-1" />
-                        {service.technician.name}
+                      <Badge variant="secondary" className="cursor-pointer">
+                        <RiUserLine className="h-3 w-3 mr-1" />
+                        Unassigned
                       </Badge>
                     </button>
                   ) : (
-                    <Badge variant="default">
-                      <RiUserStarLine className="h-3 w-3 mr-1" />
-                      {service.technician.name}
-                    </Badge>
-                  )
-                ) : onTechnicianClick ? (
-                  <button
-                    onClick={() => onTechnicianClick(service)}
-                    className="text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 rounded"
-                  >
-                    <Badge variant="secondary" className="cursor-pointer">
+                    <Badge variant="secondary">
                       <RiUserLine className="h-3 w-3 mr-1" />
                       Unassigned
                     </Badge>
-                  </button>
-                ) : (
-                  <Badge variant="secondary">
-                    <RiUserLine className="h-3 w-3 mr-1" />
-                    Unassigned
-                  </Badge>
-                )}
-              </TableCell>
+                  )}
+                </TableCell>
+              )}
               {showInvoice && (
                 <TableCell>
                   {service.invoice ? (
@@ -264,6 +278,9 @@ export function ServiceTable({
                           variant={paymentStatusColors[service.invoice.paymentStatus] || "outline"}
                           className="w-fit mt-1"
                         >
+                          {service.invoice.paymentStatus === "paid" ? (
+                            <RiCheckLine className="h-3 w-3 mr-1" />
+                          ) : null}
                           {service.invoice.paymentStatus}
                         </Badge>
                       </div>
@@ -283,20 +300,77 @@ export function ServiceTable({
                   )}
                 </TableCell>
               )}
-              <TableCell className="text-muted-foreground">
-                {formatDate(service.checkinAt)}
-              </TableCell>
-              <TableCell>
-                {onMoreClick ? (
-                  <Button variant="ghost" size="icon" onClick={() => onMoreClick(service)}>
-                    <RiMoreLine className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button variant="ghost" size="icon">
-                    <RiMoreLine className="h-4 w-4" />
-                  </Button>
-                )}
-              </TableCell>
+              {showCheckinAt && (
+                <TableCell className="text-muted-foreground">
+                  {formatDate(service.checkinAt)}
+                </TableCell>
+              )}
+              {showDoneAt && (
+                <TableCell className="text-muted-foreground">
+                  {formatDate(service.doneAt)}
+                </TableCell>
+              )}
+              {showCheckoutAt && (
+                <TableCell className="text-muted-foreground">
+                  {formatDate(service.checkoutAt)}
+                </TableCell>
+              )}
+              {showActions && (
+                <TableCell>
+                  <div className="flex gap-2">
+                    {onCallClick && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onCallClick(service.noWa, service)}
+                      >
+                        <RiPhoneLine className="h-4 w-4 mr-1" />
+                        Call
+                      </Button>
+                    )}
+                    {onPickupClick && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => onPickupClick(service.id)}
+                      >
+                        <RiCheckLine className="h-4 w-4 mr-1" />
+                        Picked Up
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              )}
+              {!showActions && variant !== "history" && (
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button variant="ghost" size="icon">
+                          <RiMoreLine className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
+                    <DropdownMenuContent>
+                      {onEditClick && (
+                        <DropdownMenuItem onClick={() => onEditClick(service)}>
+                          <RiPencilLine className="h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                      )}
+                      {onDeleteClick && service.invoice?.paymentStatus !== "paid" && (
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => onDeleteClick(service)}
+                        >
+                          <RiDeleteBinLine className="h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              )}
             </TableRow>
           ))
         )}

@@ -17,6 +17,7 @@ export interface TokoOverviewStats {
 
 export interface RecentService {
   id: string;
+  hpCatalogId: string;
   customerName: string | null;
   noWa: string;
   complaint: string;
@@ -40,6 +41,8 @@ export interface RecentService {
     grandTotal: number;
     paymentStatus: string;
   } | null;
+  passwordPattern?: string | null;
+  imei?: string | null;
 }
 
 // Extended type for technician tasks with items
@@ -228,11 +231,14 @@ export async function getTokoDashboardData(tokoId: string): Promise<{
       orderBy: { checkinAt: "desc" },
       select: {
         id: true,
+        hpCatalogId: true,
         customerName: true,
         noWa: true,
         complaint: true,
         status: true,
         checkinAt: true,
+        passwordPattern: true,
+        imei: true,
         hpCatalog: {
           select: {
             modelName: true,
@@ -485,11 +491,14 @@ export async function getStaffDashboardData(): Promise<{
         orderBy: { checkinAt: "desc" },
         select: {
           id: true,
+          hpCatalogId: true,
           customerName: true,
           noWa: true,
           complaint: true,
           status: true,
           checkinAt: true,
+          passwordPattern: true,
+          imei: true,
           hpCatalog: {
             select: {
               modelName: true,
@@ -532,11 +541,14 @@ export async function getStaffDashboardData(): Promise<{
         orderBy: { checkinAt: "desc" },
         select: {
           id: true,
+          hpCatalogId: true,
           customerName: true,
           noWa: true,
           complaint: true,
           status: true,
           checkinAt: true,
+          passwordPattern: true,
+          imei: true,
           hpCatalog: {
             select: {
               modelName: true,
@@ -597,6 +609,7 @@ export async function getStaffDashboardData(): Promise<{
 // Get all services for staff (for the services list page)
 export interface ServiceListItem {
   id: string;
+  hpCatalogId: string;
   customerName: string | null;
   noWa: string;
   complaint: string;
@@ -621,6 +634,8 @@ export interface ServiceListItem {
   createdBy?: {
     name: string;
   };
+  passwordPattern?: string | null;
+  imei?: string | null;
 }
 
 export async function getStaffServiceList(tokoId?: string): Promise<{
@@ -665,6 +680,7 @@ export async function getStaffServiceList(tokoId?: string): Promise<{
       orderBy: { checkinAt: "desc" },
       select: {
         id: true,
+        hpCatalogId: true,
         customerName: true,
         noWa: true,
         complaint: true,
@@ -672,6 +688,8 @@ export async function getStaffServiceList(tokoId?: string): Promise<{
         checkinAt: true,
         doneAt: true,
         checkoutAt: true,
+        passwordPattern: true,
+        imei: true,
         hpCatalog: {
           select: {
             modelName: true,
@@ -747,6 +765,7 @@ export async function getCompletedServices(tokoId?: string): Promise<{
       orderBy: { doneAt: "desc" },
       select: {
         id: true,
+        hpCatalogId: true,
         customerName: true,
         noWa: true,
         complaint: true,
@@ -754,6 +773,8 @@ export async function getCompletedServices(tokoId?: string): Promise<{
         checkinAt: true,
         doneAt: true,
         checkoutAt: true,
+        passwordPattern: true,
+        imei: true,
         hpCatalog: {
           select: {
             modelName: true,
@@ -827,6 +848,7 @@ export async function getPickedUpServices(tokoId?: string): Promise<{
       orderBy: { checkoutAt: "desc" },
       select: {
         id: true,
+        hpCatalogId: true,
         customerName: true,
         noWa: true,
         complaint: true,
@@ -834,6 +856,8 @@ export async function getPickedUpServices(tokoId?: string): Promise<{
         checkinAt: true,
         doneAt: true,
         checkoutAt: true,
+        passwordPattern: true,
+        imei: true,
         hpCatalog: {
           select: {
             modelName: true,
@@ -1421,11 +1445,14 @@ export async function getTechnicianDashboardData(): Promise<{
         orderBy: { checkinAt: "asc" }, // Oldest first (FIFO)
         select: {
           id: true,
+          hpCatalogId: true,
           customerName: true,
           noWa: true,
           complaint: true,
           status: true,
           checkinAt: true,
+          passwordPattern: true,
+          imei: true,
           hpCatalog: {
             select: {
               modelName: true,

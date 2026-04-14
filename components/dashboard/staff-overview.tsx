@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
   CardHeader,
@@ -8,21 +10,29 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import type { ServiceListItem, PaginatedResult } from "@/actions/staff";
+import { deleteService } from "@/actions/staff";
+import { ServicesForm } from "@/components/staff/services-form";
 import {
-  getStaffServiceList,
-  type ServiceListItem,
-} from "@/actions/dashboard";
-import { AddServiceForm } from "@/components/staff/add-service-form";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   RiAddCircleLine,
   RiFileList3Line,
@@ -30,369 +40,453 @@ import {
   RiCheckLine,
   RiPlayCircleLine,
   RiCheckboxCircleLine,
-  RiSmartphoneLine,
-  RiToolsLine,
-  RiMoneyDollarCircleLine,
+  RiStore2Line,
+  RiFileList3Line as RiFileList3LineIcon,
+  RiArrowRightLine,
 } from "@remixicon/react";
+import Link from "next/link";
 
-// Status badge colors
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  received: "secondary",
-  repairing: "default",
-  done: "outline",
-  picked_up: "default",
-};
-
-// Status labels
-const statusLabels: Record<string, string> = {
-  received: "Received",
-  repairing: "In Progress",
-  done: "Done",
-  picked_up: "Picked Up",
-};
-
-// Payment status colors
-const paymentStatusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  unpaid: "destructive",
-  paid: "default",
-};
-
-// Format date
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+// Stat Card Component
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  description?: string;
+  icon: React.ReactNode;
 }
 
-// Format currency
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
+function StatCard({ title, value, description, icon }: StatCardProps) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">
+          {title}
+        </CardTitle>
+        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+          {icon}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value}</div>
+        {description && (
+          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
-export function StaffOverview() {
-  const [services, setServices] = useState<ServiceListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showAddService, setShowAddService] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
+// Quick Action Card Component
+interface QuickActionCardProps {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  href: string;
+  color?: string;
+  onClick?: () => void;
+}
 
-  const fetchServices = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+function QuickActionCard({ title, description, icon, href, color = "bg-primary", onClick }: QuickActionCardProps) {
+  const content = (
+    <div className="flex items-start gap-4">
+      <div className={`h-12 w-12 rounded-lg ${color} flex items-center justify-center text-white flex-shrink-0`}>
+        {icon}
+      </div>
+      <div className="flex-1">
+        <h3 className="font-semibold">{title}</h3>
+        <p className="text-sm text-muted-foreground mt-1">{description}</p>
+      </div>
+      <RiArrowRightLine className="h-5 w-5 text-muted-foreground mt-1" />
+    </div>
+  );
 
-    try {
-      const result = await getStaffServiceList();
-      if (result.success && result.data) {
-        setServices(result.data);
-      } else {
-        setError(result.error || "Failed to load services");
-      }
-    } catch (err) {
-      console.error("Error fetching services:", err);
-      setError("Failed to load services");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  return (
+    <Card className="hover:shadow-md transition-shadow cursor-pointer">
+      <CardContent>
+        {onClick ? (
+          <div onClick={onClick}>{content}</div>
+        ) : (
+          <Link href={href}>{content}</Link>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
+// Alert Card Component
+interface Alert {
+  type: "warning" | "info" | "success";
+  title: string;
+  message: string;
+}
 
-  // Calculate stats
-  const stats = {
-    total: services.length,
-    received: services.filter((s) => s.status === "received").length,
-    inProgress: services.filter((s) => s.status === "repairing").length,
-    done: services.filter((s) => s.status === "done").length,
-    pickedUp: services.filter((s) => s.status === "picked_up").length,
-    unpaid: services.filter((s) => s.invoice?.paymentStatus === "unpaid").length,
+function AlertCard({ alert }: { alert: Alert }) {
+  const colors = {
+    warning: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
+    info: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+    success: "bg-green-500/10 text-green-700 dark:text-green-400",
   };
 
-  // Filter services
-  const filteredServices = services.filter((service) => {
-    if (filter === "all") return true;
-    return service.status === filter;
-  });
+  const icons = {
+    warning: "⚠",
+    info: "ℹ",
+    success: "✓",
+  };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard Overview</h1>
-          <p className="text-muted-foreground">
-            Welcome back! Here's what's happening today.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <div className="h-4 w-24 animate-pulse rounded bg-muted/50" />
-                <div className="h-4 w-4 animate-pulse rounded bg-muted/50" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 w-16 animate-pulse rounded bg-muted/50" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${colors[alert.type]}`}>
+      <span>{icons[alert.type]}</span>
+      <span>{alert.message}</span>
+    </span>
+  );
+}
+
+interface StaffOverviewProps {
+  initialServices: ServiceListItem[];
+  timeFilter: "daily" | "weekly" | "monthly";
+  pagination: PaginatedResult<ServiceListItem>;
+}
+
+export function StaffOverview({
+  initialServices,
+  timeFilter: initialTimeFilter,
+  pagination,
+}: StaffOverviewProps) {
+  const { selectedToko } = useToko();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const [showAddService, setShowAddService] = useState(false);
+  const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
+  const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly">(
+    initialTimeFilter
+  );
+
+  // Handle time filter change - updates URL and triggers server refetch
+  const handleTimeFilterChange = (newFilter: "daily" | "weekly" | "monthly") => {
+    startTransition(() => {
+      setTimeFilter(newFilter);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("filter", newFilter);
+      router.push(`?${params.toString()}`, { scroll: false });
+    });
+  };
+
+  // Refresh page after service creation/update
+  const handleServiceCreated = useCallback(() => {
+    setEditingService(null);
+    router.refresh();
+  }, [router]);
+
+  // Handle delete service
+  const handleDeleteService = useCallback(async () => {
+    if (!deletingService) return;
+    
+    setIsDeleting(true);
+    const result = await deleteService(deletingService.id);
+    setIsDeleting(false);
+    
+    if (result.success) {
+      setDeletingService(null);
+      router.refresh();
+    } else {
+      // Could add toast notification here for error
+      console.error("Failed to delete service:", result.error);
+    }
+  }, [deletingService, router]);
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("page", newPage.toString());
+      params.set("filter", timeFilter);
+      router.push(`?${params.toString()}`, { scroll: false });
+    });
+  };
+
+  // Data is fetched server-side and passed as props
+  const filteredServices = initialServices;
+
+  // Calculate stats based on filtered services
+  const stats = {
+    total: filteredServices.length,
+    received: filteredServices.filter((s) => s.status === "received").length,
+    repairing: filteredServices.filter((s) => s.status === "repairing").length,
+    done: filteredServices.filter((s) => s.status === "done").length,
+    pickedUp: filteredServices.filter((s) => s.status === "picked_up").length,
+  };
+
+
+  // Generate alerts based on current data
+  const alerts: Alert[] = [];
+  if (stats.received > 0) {
+    alerts.push({
+      type: "info",
+      title: "Services Awaiting Processing",
+      message: `${stats.received} service(s) are waiting to be processed`,
+    });
+  }
+  if (stats.done > 0) {
+    alerts.push({
+      type: "success",
+      title: "Ready for Pickup",
+      message: `${stats.done} service(s) are ready for customer pickup`,
+    });
+  }
+  if (stats.total === 0) {
+    alerts.push({
+      type: "info",
+      title: "No Services Yet",
+      message: "Click 'New Service' to add your first service request",
+    });
   }
 
-  if (error) {
+  // No toko selected
+  if (!selectedToko) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard Overview</h1>
-          <p className="text-muted-foreground">
-            Welcome back! Here's what's happening today.
-          </p>
-        </div>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-destructive">{error}</p>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <RiStore2Line className="h-16 w-16 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold">No Toko Selected</h2>
+        <p className="text-muted-foreground mt-2">
+          Please select a toko from the sidebar to view the dashboard.
+        </p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard Overview</h1>
+          <h1 className="text-2xl font-bold">Staff Dashboard</h1>
           <p className="text-muted-foreground">
-            Welcome back! Here's what's happening today.
+            Overview of your service activities at {selectedToko.name}
           </p>
         </div>
-        <Button onClick={() => setShowAddService(true)}>
-          <RiAddCircleLine className="mr-2 h-4 w-4" />
-          Add Service
-        </Button>
+        <Tabs
+          value={timeFilter}
+          onValueChange={(value) =>
+            handleTimeFilterChange(value as "daily" | "weekly" | "monthly")
+          }
+          className="w-full md:w-auto"
+        >
+          <TabsList>
+            <TabsTrigger value="daily">Daily</TabsTrigger>
+            <TabsTrigger value="weekly">Weekly</TabsTrigger>
+            <TabsTrigger value="monthly">Monthly</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Services</CardTitle>
-            <RiSmartphoneLine className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">
-              All services
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <RiPlayCircleLine className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
-            <p className="text-xs text-muted-foreground">
-              Currently being repaired
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <RiCheckLine className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.done}</div>
-            <p className="text-xs text-muted-foreground">
-              Waiting for pickup
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Unpaid</CardTitle>
-            <RiMoneyDollarCircleLine className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.unpaid}</div>
-            <p className="text-xs text-muted-foreground">
-              Pending payment
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Total Services"
+          value={stats.total}
+          description="All services"
+          icon={<RiFileList3Line className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Received"
+          value={stats.received}
+          description="Waiting to be processed"
+          icon={<RiTimeLine className="h-4 w-4" />}
+        />
+        <StatCard
+          title="In Progress"
+          value={stats.repairing}
+          description="Currently being repaired"
+          icon={<RiPlayCircleLine className="h-4 w-4" />}
+        />
+        <StatCard
+          title="Done"
+          value={stats.done}
+          description="Completed services"
+          icon={<RiCheckLine className="h-4 w-4" />}
+        />
       </div>
 
-      {/* Secondary Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <RiTimeLine className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.received}</div>
-            <p className="text-xs text-muted-foreground">
-              Waiting to be processed
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Picked Up</CardTitle>
-            <RiCheckboxCircleLine className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pickedUp}</div>
-            <p className="text-xs text-muted-foreground">
-              Completed & picked up
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Services</CardTitle>
-            <RiToolsLine className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress + stats.received}</div>
-            <p className="text-xs text-muted-foreground">
-              Active services
-            </p>
-          </CardContent>
-        </Card>
+      {/* Quick Action Cards */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setShowAddService(true)}>
+            <CardContent>
+              <div className="flex items-start gap-4">
+                <div className="h-12 w-12 rounded-lg bg-blue-500 flex items-center justify-center text-white flex-shrink-0">
+                  <RiAddCircleLine className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold">New Service</h3>
+                  <p className="text-sm text-muted-foreground mt-1">Add a new service request</p>
+                </div>
+                <RiArrowRightLine className="h-5 w-5 text-muted-foreground mt-1" />
+              </div>
+            </CardContent>
+          </Card>
+          <QuickActionCard
+            title="Manage Services"
+            description="View and manage active services"
+            icon={<RiFileList3Line className="h-6 w-6" />}
+            href="/dashboard/staff/services"
+            color="bg-green-500"
+          />
+          <QuickActionCard
+            title="Completed Services"
+            description="Handle pickups and payments"
+            icon={<RiCheckboxCircleLine className="h-6 w-6" />}
+            href="/dashboard/staff/completed"
+            color="bg-purple-500"
+          />
+        </div>
       </div>
 
-      {/* Recent Services Table */}
+      {/* Add/Edit Service Dialog */}
+      <ServicesForm
+        open={showAddService}
+        onOpenChange={setShowAddService}
+        onSuccess={handleServiceCreated}
+        editData={editingService}
+      />
+
+      {/* Recent Services with Notifications */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Recent Services</CardTitle>
-              <CardDescription>
-                Latest service orders at your location
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={filter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter("all")}
-              >
-                All
-              </Button>
-              <Button
-                variant={filter === "received" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter("received")}
-              >
-                Pending
-              </Button>
-              <Button
-                variant={filter === "repairing" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter("repairing")}
-              >
-                In Progress
-              </Button>
-              <Button
-                variant={filter === "done" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFilter("done")}
-              >
-                Done
-              </Button>
-            </div>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Recent Services</CardTitle>
+            <CardDescription>
+              {`Showing ${filteredServices.length} of ${pagination.total} services from the ${timeFilter === "daily" ? "past day" : timeFilter === "weekly" ? "past week" : "past month"}`}
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-3">
+            {alerts.length > 0 && (
+              <div className="flex items-center gap-2">
+                {alerts.map((alert, index) => (
+                  <AlertCard key={index} alert={alert} />
+                ))}
+              </div>
+            )}
+            {isPending && (
+              <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            )}
           </div>
         </CardHeader>
-        <CardContent>
-          {filteredServices.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">
-              No services found
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Payment</TableHead>
-                  <TableHead>Check-in</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredServices.slice(0, 10).map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {service.customerName || "-"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {service.noWa}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">
-                          {service.hpCatalog.modelName}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {service.hpCatalog.brand.name}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {service.complaint}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[service.status] || "default"}>
-                        {statusLabels[service.status] || service.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {service.invoice ? (
-                        <Badge variant={paymentStatusColors[service.invoice.paymentStatus] || "default"}>
-                          {service.invoice.paymentStatus === "paid" ? "Paid" : "Unpaid"}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <CardContent className="space-y-4">
+          <ServiceTable
+            services={filteredServices}
+            variant="active"
+            showInvoice={true}
+            showCreatedBy={true}
+            emptyMessage="No services found"
+            onEditClick={(service) => {
+              setEditingService(service);
+              setShowAddService(true);
+            }}
+            onDeleteClick={(service) => {
+              setDeletingService(service);
+            }}
+          />
+          
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (pagination.page > 1) {
+                        handlePageChange(pagination.page - 1);
+                      }
+                    }}
+                    className={pagination.page === 1 ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+                
+                {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((pageNum) => {
+                  // Show first, last, and pages around current page
+                  const showPage =
+                    pageNum === 1 ||
+                    pageNum === pagination.totalPages ||
+                    (pageNum >= pagination.page - 1 && pageNum <= pagination.page + 1);
+                  
+                  if (!showPage) {
+                    // Show ellipsis instead of skipping pages
+                    return null;
+                  }
+                  
+                  // Show ellipsis before current page group
+                  if (pageNum === pagination.page - 2 && pageNum > 2) {
+                    return (
+                      <PaginationItem key={`ellipsis-before-${pageNum}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+                  
+                  // Show ellipsis after current page group
+                  if (pageNum === pagination.page + 2 && pageNum < pagination.totalPages - 1) {
+                    return (
+                      <PaginationItem key={`ellipsis-after-${pageNum}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+                  
+                  return (
+                    <PaginationItem key={pageNum}>
+                      <PaginationLink
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handlePageChange(pageNum);
+                        }}
+                        isActive={pagination.page === pageNum}
+                      >
+                        {pageNum}
+                      </PaginationLink>
+                    </PaginationItem>
+                  );
+                })}
+                
+                <PaginationItem>
+                  <PaginationNext
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (pagination.page < pagination.totalPages) {
+                        handlePageChange(pagination.page + 1);
+                      }
+                    }}
+                    className={pagination.page === pagination.totalPages ? "pointer-events-none opacity-50" : ""}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           )}
         </CardContent>
       </Card>
 
-      {/* Add Service Form */}
-      <AddServiceForm
-        open={showAddService}
-        onOpenChange={setShowAddService}
-        onSuccess={() => {
-          fetchServices();
-        }}
-      />
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingService} onOpenChange={(open) => !open && setDeletingService(null)}>
+        <AlertDialogContent>
+          <AlertDialogTitle>Delete Service</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete this service for {deletingService?.customerName || "Unknown Customer"}?
+            This action cannot be undone.
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteService} disabled={isDeleting} variant="destructive">
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

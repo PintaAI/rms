@@ -15,7 +15,7 @@ import {
   getCompletedServices,
   getPickedUpServices,
   type ServiceListItem,
-} from "@/actions/dashboard";
+} from "@/actions/staff";
 import { RiRefreshLine, RiHistoryLine } from "@remixicon/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 

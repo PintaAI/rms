@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   createService,
+  updateService,
   searchHpCatalogs,
   createHpCatalog,
   searchBrands,
-} from "@/actions/dashboard";
+} from "@/actions/staff";
 import {
   Dialog,
   DialogContent,
@@ -27,19 +28,62 @@ interface HpCatalogOption {
   brandName: string;
 }
 
-interface AddServiceFormProps {
+interface ServiceFormData {
+  id: string;
+  hpCatalogId: string;
+  customerName: string | null;
+  noWa: string;
+  complaint: string;
+  passwordPattern: string | null;
+  imei: string | null;
+  hpCatalog: {
+    modelName: string;
+    brand: {
+      name: string;
+    };
+  };
+}
+
+// Extended interface to support ServiceListItem from actions/staff
+interface ServiceListItem {
+  id: string;
+  hpCatalogId?: string;
+  customerName: string | null;
+  noWa: string;
+  complaint: string;
+  passwordPattern?: string | null;
+  imei?: string | null;
+  hpCatalog: {
+    modelName: string;
+    brand: {
+      name: string;
+    };
+  };
+}
+
+interface ServicesFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  editData?: ServiceFormData | ServiceListItem | null;
 }
 
-export function AddServiceForm({
+export function ServicesForm({
   open,
   onOpenChange,
   onSuccess,
-}: AddServiceFormProps) {
+  editData,
+}: ServicesFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+
+  // Form field states for edit mode
+  const [customerName, setCustomerName] = useState("");
+  const [noWa, setNoWa] = useState("");
+  const [complaint, setComplaint] = useState("");
+  const [imei, setImei] = useState("");
+  const [passwordPatternText, setPasswordPatternText] = useState("");
 
   // Device autocomplete state
   const [deviceQuery, setDeviceQuery] = useState("");
@@ -61,7 +105,51 @@ export function AddServiceForm({
   const [showPatternLock, setShowPatternLock] = useState(false);
   const [patternError, setPatternError] = useState(false);
 
-  // Close dropdown when clicking outside
+  // Initialize form when editing
+  useEffect(() => {
+    if (editData && open) {
+      setIsEditMode(true);
+      // Set device info
+      setDeviceQuery(`${editData.hpCatalog.brand.name} ${editData.hpCatalog.modelName}`);
+      setSelectedDevice({
+        id: editData.hpCatalogId || "",
+        modelName: editData.hpCatalog.modelName,
+        brandName: editData.hpCatalog.brand.name,
+      });
+      // Set form field values
+      setCustomerName(editData.customerName || "");
+      setNoWa(editData.noWa || "");
+      setComplaint(editData.complaint || "");
+      setImei(editData.imei || "");
+      
+      // Handle password pattern - check if it's a pattern lock (dash-separated numbers) or text
+      const passwordPattern = editData.passwordPattern || "";
+      if (passwordPattern && /^[\d-]+$/.test(passwordPattern)) {
+        // It's a pattern lock format (e.g., "1-2-3-4")
+        const patternArray = passwordPattern.split("-").map(Number);
+        setPattern(patternArray);
+        setShowPatternLock(true);
+        setPasswordPatternText("");
+      } else {
+        // It's a text password
+        setPasswordPatternText(passwordPattern);
+        setShowPatternLock(false);
+        setPattern([]);
+      }
+    } else if (!editData && open) {
+      setIsEditMode(false);
+      // Clear form fields for new service
+      setCustomerName("");
+      setNoWa("");
+      setComplaint("");
+      setImei("");
+      setPasswordPatternText("");
+      setPattern([]);
+      setShowPatternLock(false);
+    }
+  }, [editData, open]);
+
+  // Close dropdown when clicked outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -166,6 +254,12 @@ export function AddServiceForm({
       setPattern([]);
       setShowPatternLock(false);
       setPatternError(false);
+      setIsEditMode(false);
+      setCustomerName("");
+      setNoWa("");
+      setComplaint("");
+      setImei("");
+      setPasswordPatternText("");
     }
   }, [open]);
 
@@ -272,15 +366,36 @@ export function AddServiceForm({
       }
     }
 
-    const result = await createService({
-      hpCatalogId: selectedDevice.id,
-      customerName: (formData.get("customerName") as string) || undefined,
-      noWa: formData.get("noWa") as string,
-      complaint: formData.get("complaint") as string,
-      passwordPattern:
-        (formData.get("passwordPattern") as string) || undefined,
-      imei: (formData.get("imei") as string) || undefined,
-    });
+    // Get password pattern value - from state (pattern lock) or text input
+    let passwordPatternValue = passwordPatternText;
+    if (showPatternLock && pattern.length > 0) {
+      passwordPatternValue = patternToString(pattern);
+    }
+
+    let result;
+    
+    if (isEditMode && editData) {
+      // Update existing service
+      result = await updateService(editData.id, {
+        hpCatalogId: selectedDevice.id,
+        customerName: customerName || undefined,
+        noWa: noWa,
+        complaint: complaint,
+        passwordPattern: passwordPatternValue || undefined,
+        imei: imei || undefined,
+      });
+    } else {
+      // Create new service - use form data for new service
+      result = await createService({
+        hpCatalogId: selectedDevice.id,
+        customerName: (formData.get("customerName") as string) || undefined,
+        noWa: formData.get("noWa") as string,
+        complaint: formData.get("complaint") as string,
+        passwordPattern:
+          (formData.get("passwordPattern") as string) || undefined,
+        imei: (formData.get("imei") as string) || undefined,
+      });
+    }
 
     setIsLoading(false);
 
@@ -288,7 +403,7 @@ export function AddServiceForm({
       onOpenChange(false);
       onSuccess();
     } else {
-      setError(result.error || "Failed to create service");
+      setError(result.error || "Failed to " + (isEditMode ? "update" : "create") + " service");
     }
   }
 
@@ -296,9 +411,13 @@ export function AddServiceForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="min-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl">New Service Ticket</DialogTitle>
+          <DialogTitle className="text-xl">
+            {isEditMode ? "Edit Service Ticket" : "New Service Ticket"}
+          </DialogTitle>
           <DialogDescription>
-            Create a new service ticket by filling in the details below.
+            {isEditMode 
+              ? "Update the service ticket details below." 
+              : "Create a new service ticket by filling in the details below."}
           </DialogDescription>
         </DialogHeader>
 
@@ -500,6 +619,8 @@ export function AddServiceForm({
                   name="customerName"
                   placeholder="Name (optional)"
                   disabled={isLoading}
+                  value={isEditMode ? customerName : (editData?.customerName || "")}
+                  onChange={(e) => setCustomerName(e.target.value)}
                 />
               </div>
 
@@ -518,6 +639,8 @@ export function AddServiceForm({
                   placeholder="08123456789"
                   required
                   disabled={isLoading}
+                  value={isEditMode ? noWa : (editData?.noWa || "")}
+                  onChange={(e) => setNoWa(e.target.value)}
                 />
               </div>
             </div>
@@ -546,6 +669,8 @@ export function AddServiceForm({
                   required
                   disabled={isLoading}
                   rows={3}
+                  value={isEditMode ? complaint : (editData?.complaint || "")}
+                  onChange={(e) => setComplaint(e.target.value)}
                   className="flex min-h-[80px] rounded-3xl w-full border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
                 />
               </div>
@@ -585,7 +710,8 @@ export function AddServiceForm({
                     name="passwordPattern"
                     placeholder="Device unlock code (PIN, password)"
                     disabled={isLoading}
-                    defaultValue=""
+                    value={isEditMode ? passwordPatternText : (editData?.passwordPattern || "")}
+                    onChange={(e) => setPasswordPatternText(e.target.value)}
                   />
                 )}
 
@@ -652,6 +778,8 @@ export function AddServiceForm({
                   name="imei"
                   placeholder="Device IMEI number"
                   disabled={isLoading}
+                  value={isEditMode ? imei : (editData?.imei || "")}
+                  onChange={(e) => setImei(e.target.value)}
                 />
               </div>
             </div>
@@ -684,10 +812,10 @@ export function AddServiceForm({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                   </svg>
-                  Creating...
+                  {isEditMode ? "Updating..." : "Creating..."}
                 </>
               ) : (
-                "Create Ticket"
+                isEditMode ? "Update Ticket" : "Create Ticket"
               )}
             </Button>
           </div>

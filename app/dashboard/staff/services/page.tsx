@@ -10,63 +10,22 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ServiceTable } from "@/components/dashboard/service-table";
+import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
 import {
   getStaffServiceList,
   type ServiceListItem,
-} from "@/actions/dashboard";
-import { AddServiceForm } from "@/components/staff/add-service-form";
-import { RiAddLine, RiRefreshLine } from "@remixicon/react";
-import { markInvoiceAsPaid } from "@/actions/dashboard";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@/actions/staff";
+import { ServicesForm } from "@/components/staff/services-form";
+import { RiAddLine, RiRefreshLine, RiTimeLine, RiPlayCircleLine } from "@remixicon/react";
 
 export default function StaffServicesPage() {
   const { selectedToko } = useToko();
-  const [services, setServices] = useState<ServiceListItem[]>([]);
+  const [services, setServices] = useState<ServiceTableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [isPaidDialogOpen, setIsPaidDialogOpen] = useState(false);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const handleMarkPaidClick = (invoiceId: string, serviceId: string) => {
-    setSelectedInvoiceId(invoiceId);
-    setSelectedServiceId(serviceId);
-    setIsPaidDialogOpen(true);
-  };
-
-  const handleConfirmPaid = async () => {
-    if (!selectedInvoiceId) return;
-
-    setIsProcessing(true);
-    try {
-      const result = await markInvoiceAsPaid(selectedInvoiceId);
-      if (result.success) {
-        fetchData();
-        setIsPaidDialogOpen(false);
-        setSelectedInvoiceId(null);
-        setSelectedServiceId(null);
-      } else {
-        alert(result.error || "Failed to mark invoice as paid");
-      }
-    } catch (error) {
-      console.error("Error marking invoice as paid:", error);
-      alert("Failed to mark invoice as paid");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const [filter, setFilter] = useState<string>("all");
+  const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!selectedToko) {
@@ -78,9 +37,13 @@ export default function StaffServicesPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await getStaffServiceList(selectedToko.id);
+      const result = await getStaffServiceList(selectedToko.id, undefined, 1, 100);
       if (result.success && result.data) {
-        setServices(result.data);
+        // Filter to show only active services (received + repairing)
+        const activeServices = result.data.data.filter(
+          (s: ServiceListItem) => s.status === "received" || s.status === "repairing"
+        ) as ServiceTableItem[];
+        setServices(activeServices);
       } else {
         setError(result.error || "Failed to load data");
       }
@@ -95,6 +58,18 @@ export default function StaffServicesPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Filter services by status
+  const filteredServices = services.filter((service) => {
+    if (filter === "all") return true;
+    return service.status === filter;
+  });
+
+  // Calculate stats for active services
+  const stats = {
+    received: services.filter((s) => s.status === "received").length,
+    repairing: services.filter((s) => s.status === "repairing").length,
+  };
 
   // Loading state
   if (isLoading) {
@@ -139,9 +114,9 @@ export default function StaffServicesPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">Services</h1>
+          <h1 className="text-2xl font-bold">Active Services</h1>
           <p className="text-muted-foreground">
-            Recent service transactions
+            Manage services in progress
           </p>
         </div>
         <Button onClick={() => setDialogOpen(true)}>
@@ -150,20 +125,78 @@ export default function StaffServicesPage() {
         </Button>
       </div>
 
-      {/* Add Service Dialog */}
-      <AddServiceForm
+      {/* Add/Edit Service Dialog */}
+      <ServicesForm
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSuccess={fetchData}
+        editData={editingService}
       />
 
-      {/* All Services */}
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Received
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-yellow-500/10 flex items-center justify-center text-yellow-600">
+              <RiTimeLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.received}</div>
+            <p className="text-xs text-muted-foreground mt-1">Waiting to be processed</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              In Progress
+            </CardTitle>
+            <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600">
+              <RiPlayCircleLine className="h-4 w-4" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.repairing}</div>
+            <p className="text-xs text-muted-foreground mt-1">Currently being repaired</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filter */}
+      <div className="flex gap-2">
+        <Button
+          variant={filter === "all" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("all")}
+        >
+          All ({services.length})
+        </Button>
+        <Button
+          variant={filter === "received" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("received")}
+        >
+          Received ({stats.received})
+        </Button>
+        <Button
+          variant={filter === "repairing" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setFilter("repairing")}
+        >
+          In Progress ({stats.repairing})
+        </Button>
+      </div>
+
+      {/* Active Services */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>All Services</CardTitle>
+            <CardTitle>Active Services</CardTitle>
             <CardDescription>
-              {services.length} service requests at {selectedToko.name}
+              {filteredServices.length} service(s) at {selectedToko.name}
             </CardDescription>
           </div>
           <Button
@@ -177,32 +210,18 @@ export default function StaffServicesPage() {
         </CardHeader>
         <CardContent>
           <ServiceTable
-            services={services}
+            services={filteredServices}
+            variant="active"
             showInvoice={true}
             showCreatedBy={true}
-            onMarkPaidClick={handleMarkPaidClick}
-            emptyMessage="No services found"
+            emptyMessage="No active services found"
+            onEditClick={(service) => {
+              setEditingService(service);
+              setDialogOpen(true);
+            }}
           />
         </CardContent>
       </Card>
-
-      {/* Mark as Paid Dialog */}
-      <AlertDialog open={isPaidDialogOpen} onOpenChange={setIsPaidDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Payment</AlertDialogTitle>
-            <AlertDialogDescription>
-              Mark this invoice as paid? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmPaid} disabled={isProcessing}>
-              {isProcessing ? "Processing..." : "Confirm"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
