@@ -37,10 +37,10 @@ import {
 import {
   RiAddLine,
   RiDeleteBinLine,
-  RiPlayCircleLine,
   RiLockLine,
   RiRefreshLine,
   RiArrowGoBackLine,
+  RiCheckDoubleLine,
 } from "@remixicon/react";
 import { PatternLock } from "@/components/pattern-lock";
 import {
@@ -188,10 +188,6 @@ export function ServiceTaskCard({
   const [patternDialogOpen, setPatternDialogOpen] = useState(false);
   const [animationKey, setAnimationKey] = useState(0);
 
-  // ─── Status update dialog ───────────────────────────────────────────────────
-  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
-  const [newStatus, setNewStatus] = useState<string>("");
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // ─── Undo status dialog (for completed tasks) ───────────────────────────────
   const [undoDialogOpen, setUndoDialogOpen] = useState(false);
@@ -226,12 +222,6 @@ export function ServiceTaskCard({
   }, [isActive, localTask.hpCatalog.id]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
-
-  function openStatusDialog() {
-    // Use localTask.status so we show the latest (possibly optimistic) status
-    setNewStatus(localTask.status);
-    setStatusDialogOpen(true);
-  }
 
   function openAddItemDialog() {
     setItemDialogOpen(true);
@@ -282,43 +272,6 @@ export function ServiceTaskCard({
       setIsUndoingStatus(false);
     }
   }, [undoStatus, onRefresh]);
-
-  const handleUpdateStatus = useCallback(async () => {
-    if (!newStatus) return;
-    setIsUpdatingStatus(true);
-
-    // Read the latest localTask via ref — avoids stale closure issues
-    const snapshot = localTaskRef.current;
-
-    // Block useEffect sync while the mutation is in-flight
-    pendingMutationsRef.current += 1;
-
-    // --- Optimistic update ---
-    setLocalTask((prev) => ({
-      ...prev,
-      status: newStatus,
-      ...(newStatus === "done" ? { doneAt: new Date() } : {}),
-    }));
-
-    try {
-      const result = await updateServiceStatus(snapshot.id, newStatus as any);
-      if (result.success) {
-        setStatusDialogOpen(false);
-        // Allow the next prop change (from the silent re-fetch) to sync
-        pendingMutationsRef.current -= 1;
-        onRefresh?.();
-      } else {
-        pendingMutationsRef.current -= 1;
-        setLocalTask(snapshot);
-      }
-    } catch (err) {
-      console.error("Error updating status:", err);
-      pendingMutationsRef.current -= 1;
-      setLocalTask(snapshot);
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  }, [newStatus, onRefresh]);
 
   const handleRemoveItem = useCallback(async (itemId: string) => {
     // Read the latest localTask via ref — avoids stale closure issues
@@ -376,6 +329,43 @@ export function ServiceTaskCard({
     0
   );
 
+  // Handler: mark as done directly
+  const [isMarkingDone, setIsMarkingDone] = useState(false);
+
+  const handleMarkDone = useCallback(async () => {
+    setIsMarkingDone(true);
+
+    const snapshot = localTaskRef.current;
+
+    // Block useEffect sync while the mutation is in-flight
+    pendingMutationsRef.current += 1;
+
+    // --- Optimistic update ---
+    setLocalTask((prev) => ({
+      ...prev,
+      status: "done",
+      doneAt: new Date(),
+    }));
+
+    try {
+      const result = await updateServiceStatus(snapshot.id, "done");
+      if (result.success) {
+        // Allow the next prop change (from the silent re-fetch) to sync
+        pendingMutationsRef.current -= 1;
+        onRefresh?.();
+      } else {
+        pendingMutationsRef.current -= 1;
+        setLocalTask(snapshot);
+      }
+    } catch (err) {
+      console.error("Error marking as done:", err);
+      pendingMutationsRef.current -= 1;
+      setLocalTask(snapshot);
+    } finally {
+      setIsMarkingDone(false);
+    }
+  }, [onRefresh]);
+
   return (
     <>
       <Card>
@@ -396,21 +386,6 @@ export function ServiceTaskCard({
             </div>
             {isActive && (
               <div className="flex flex-col xs:flex-row gap-2 w-full sm:w-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full xs:w-auto"
-                  onClick={() => {
-                    if (onUpdateStatus) {
-                      onUpdateStatus(localTask.id, localTask.status);
-                    } else {
-                      openStatusDialog();
-                    }
-                  }}
-                >
-                  <RiPlayCircleLine className="h-4 w-4 xs:mr-1" />
-                  <span className="xs:inline">Update Status</span>
-                </Button>
                 <Button
                   size="sm"
                   className="w-full xs:w-auto"
@@ -582,6 +557,21 @@ export function ServiceTaskCard({
               <div>Check-in: {formatDate(localTask.checkinAt)}</div>
               {localTask.doneAt && <div>Done: {formatDate(localTask.doneAt)}</div>}
             </div>
+
+            {/* Done button – bottom-right for active tasks */}
+            {isActive && (
+              <div className="flex justify-end pt-3 border-t mt-3">
+                <Button
+                  size="sm"
+                  onClick={handleMarkDone}
+                  disabled={isMarkingDone}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  <RiCheckDoubleLine className="h-4 w-4 mr-1" />
+                  {isMarkingDone ? "Marking Done..." : "Done"}
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -633,44 +623,6 @@ export function ServiceTaskCard({
             )}
             <Button variant="outline" onClick={() => setPatternDialogOpen(false)}>
               Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Update Status Dialog */}
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update Service Status</DialogTitle>
-            <DialogDescription>Change the status of this service</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label>New Status</Label>
-              <Select
-                value={newStatus}
-                onValueChange={(value) => value && setNewStatus(value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="received">Received</SelectItem>
-                  <SelectItem value="repairing">In Progress</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateStatus} disabled={isUpdatingStatus}>
-              {isUpdatingStatus ? "Updating..." : "Update Status"}
             </Button>
           </DialogFooter>
         </DialogContent>
