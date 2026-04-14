@@ -109,7 +109,7 @@ export function CompletedServiceTable({
         emptyMessage={
           isHistory
             ? "No picked up services in history"
-            : "No completed services awaiting pickup"
+            : "No completed or failed services awaiting pickup"
         }
       />
 

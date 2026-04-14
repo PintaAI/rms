@@ -34,6 +34,7 @@ const statusColors: Record<string, "default" | "secondary" | "destructive" | "ou
   repairing: "default",
   done: "outline",
   picked_up: "default",
+  failed: "destructive",
 };
 
 // Status labels
@@ -42,6 +43,7 @@ const statusLabels: Record<string, string> = {
   repairing: "In Progress",
   done: "Done",
   picked_up: "Picked Up",
+  failed: "Failed",
 };
 
 // Payment status colors
@@ -79,6 +81,7 @@ export interface ServiceTableItem {
   customerName: string | null;
   noWa: string;
   complaint: string;
+  note?: string | null;
   status: string;
   checkinAt: Date;
   doneAt?: Date | null;
@@ -153,7 +156,7 @@ export function ServiceTable({
 
   // Calculate colspan for empty row
   const getEmptyColSpan = () => {
-    let colspan = 4; // Customer, Device, Complaint, Status (base columns)
+    let colspan = 5; // Customer, Device, Complaint, Note, Status (base columns)
     if (showCreatedBy) colspan++;
     if (showTechnician) colspan++;
     if (showInvoice) colspan++;
@@ -171,6 +174,7 @@ export function ServiceTable({
           <TableHead>Customer</TableHead>
           <TableHead>Device</TableHead>
           <TableHead>Complaint</TableHead>
+          <TableHead>Note</TableHead>
           {showCreatedBy && <TableHead>Created By</TableHead>}
           <TableHead>Status</TableHead>
           {showTechnician && <TableHead>Technician</TableHead>}
@@ -223,6 +227,9 @@ export function ServiceTable({
               </TableCell>
               <TableCell className="max-w-xs truncate">
                 {service.complaint}
+              </TableCell>
+              <TableCell className="max-w-xs truncate">
+                {service.note || "-"}
               </TableCell>
               {showCreatedBy && (
                 <TableCell>

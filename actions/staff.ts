@@ -10,6 +10,7 @@ export interface ServiceListItem {
   customerName: string | null;
   noWa: string;
   complaint: string;
+  note?: string | null;
   status: string;
   checkinAt: Date;
   doneAt: Date | null;
@@ -149,6 +150,7 @@ export async function getStaffServiceList(
         customerName: true,
         noWa: true,
         complaint: true,
+        note: true,
         status: true,
         checkinAt: true,
         doneAt: true,
@@ -236,7 +238,7 @@ export async function getCompletedServices(tokoId?: string): Promise<{
     const services = await prisma.service.findMany({
       where: {
         tokoId: targetTokoId,
-        status: "done"  // Only completed services awaiting pickup
+        status: { in: ["done", "failed"] }  // Completed and failed services awaiting pickup
       },
       orderBy: { doneAt: "desc" },
       select: {
@@ -245,6 +247,7 @@ export async function getCompletedServices(tokoId?: string): Promise<{
         customerName: true,
         noWa: true,
         complaint: true,
+        note: true,
         status: true,
         checkinAt: true,
         doneAt: true,
@@ -328,6 +331,7 @@ export async function getPickedUpServices(tokoId?: string): Promise<{
         customerName: true,
         noWa: true,
         complaint: true,
+        note: true,
         status: true,
         checkinAt: true,
         doneAt: true,
