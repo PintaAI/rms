@@ -19,7 +19,7 @@ import {
   type Sparepart,
   type SparepartWithCompatibilities,
 } from "@/actions/inventory";
-import { searchHpCatalogs, searchBrands, createHpCatalog } from "@/actions/dashboard";
+import { searchHpCatalogs, searchBrands, createHpCatalog } from "@/actions/staff";
 import { cn } from "@/lib/utils";
 import { RiCloseLine, RiAddLine } from "@remixicon/react";
 

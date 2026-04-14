@@ -619,7 +619,7 @@ export function ServicesForm({
                   name="customerName"
                   placeholder="Name (optional)"
                   disabled={isLoading}
-                  value={isEditMode ? customerName : (editData?.customerName || "")}
+                  value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                 />
               </div>
@@ -639,7 +639,7 @@ export function ServicesForm({
                   placeholder="08123456789"
                   required
                   disabled={isLoading}
-                  value={isEditMode ? noWa : (editData?.noWa || "")}
+                  value={noWa}
                   onChange={(e) => setNoWa(e.target.value)}
                 />
               </div>
@@ -669,7 +669,7 @@ export function ServicesForm({
                   required
                   disabled={isLoading}
                   rows={3}
-                  value={isEditMode ? complaint : (editData?.complaint || "")}
+                  value={complaint}
                   onChange={(e) => setComplaint(e.target.value)}
                   className="flex min-h-[80px] rounded-3xl w-full border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
                 />
@@ -710,7 +710,7 @@ export function ServicesForm({
                     name="passwordPattern"
                     placeholder="Device unlock code (PIN, password)"
                     disabled={isLoading}
-                    value={isEditMode ? passwordPatternText : (editData?.passwordPattern || "")}
+                    value={passwordPatternText}
                     onChange={(e) => setPasswordPatternText(e.target.value)}
                   />
                 )}
@@ -778,7 +778,7 @@ export function ServicesForm({
                   name="imei"
                   placeholder="Device IMEI number"
                   disabled={isLoading}
-                  value={isEditMode ? imei : (editData?.imei || "")}
+                  value={imei}
                   onChange={(e) => setImei(e.target.value)}
                 />
               </div>

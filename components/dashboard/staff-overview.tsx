@@ -347,7 +347,12 @@ export function StaffOverview({
       {/* Add/Edit Service Dialog */}
       <ServicesForm
         open={showAddService}
-        onOpenChange={setShowAddService}
+        onOpenChange={(open) => {
+          setShowAddService(open);
+          if (!open) {
+            setEditingService(null);
+          }
+        }}
         onSuccess={handleServiceCreated}
         editData={editingService}
       />
