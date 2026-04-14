@@ -41,6 +41,7 @@ import {
   RiRefreshLine,
   RiArrowGoBackLine,
   RiCheckDoubleLine,
+  RiCloseCircleLine,
 } from "@remixicon/react";
 import { PatternLock } from "@/components/pattern-lock";
 import {
@@ -56,6 +57,7 @@ const statusColors: Record<string, "default" | "secondary" | "destructive" | "ou
   received: "secondary",
   repairing: "default",
   done: "outline",
+  failed: "destructive",
   picked_up: "default",
 };
 
@@ -64,6 +66,7 @@ const statusLabels: Record<string, string> = {
   received: "Received",
   repairing: "In Progress",
   done: "Done",
+  failed: "Failed",
   picked_up: "Picked Up",
 };
 
@@ -332,6 +335,11 @@ export function ServiceTaskCard({
   // Handler: mark as done directly
   const [isMarkingDone, setIsMarkingDone] = useState(false);
 
+  // ─── Failed dialog ─────────────────────────────────────────────────────────
+  const [failedDialogOpen, setFailedDialogOpen] = useState(false);
+  const [failedNote, setFailedNote] = useState("");
+  const [isMarkingFailed, setIsMarkingFailed] = useState(false);
+
   const handleMarkDone = useCallback(async () => {
     setIsMarkingDone(true);
 
@@ -350,7 +358,6 @@ export function ServiceTaskCard({
     try {
       const result = await updateServiceStatus(snapshot.id, "done");
       if (result.success) {
-        // Allow the next prop change (from the silent re-fetch) to sync
         pendingMutationsRef.current -= 1;
         onRefresh?.();
       } else {
@@ -365,6 +372,46 @@ export function ServiceTaskCard({
       setIsMarkingDone(false);
     }
   }, [onRefresh]);
+
+  function openFailedDialog() {
+    setFailedNote("");
+    setFailedDialogOpen(true);
+  }
+
+  const handleMarkFailed = useCallback(async () => {
+    if (!failedNote.trim()) return;
+    setIsMarkingFailed(true);
+
+    const snapshot = localTaskRef.current;
+
+    // Block useEffect sync while the mutation is in-flight
+    pendingMutationsRef.current += 1;
+
+    // --- Optimistic update ---
+    setLocalTask((prev) => ({
+      ...prev,
+      status: "failed",
+      doneAt: new Date(),
+    }));
+
+    try {
+      const result = await updateServiceStatus(snapshot.id, "failed", failedNote.trim());
+      if (result.success) {
+        setFailedDialogOpen(false);
+        pendingMutationsRef.current -= 1;
+        onRefresh?.();
+      } else {
+        pendingMutationsRef.current -= 1;
+        setLocalTask(snapshot);
+      }
+    } catch (err) {
+      console.error("Error marking as failed:", err);
+      pendingMutationsRef.current -= 1;
+      setLocalTask(snapshot);
+    } finally {
+      setIsMarkingFailed(false);
+    }
+  }, [failedNote, onRefresh]);
 
   return (
     <>
@@ -402,7 +449,7 @@ export function ServiceTaskCard({
                 </Button>
               </div>
             )}
-            {!isActive && (localTask.status === "done" || localTask.status === "picked_up") && (
+            {!isActive && (localTask.status === "done" || localTask.status === "picked_up" || localTask.status === "failed") && (
               <div className="flex flex-col xs:flex-row gap-2 w-full sm:w-auto">
                 <Button
                   variant="outline"
@@ -558,9 +605,17 @@ export function ServiceTaskCard({
               {localTask.doneAt && <div>Done: {formatDate(localTask.doneAt)}</div>}
             </div>
 
-            {/* Done button – bottom-right for active tasks */}
+            {/* Done & Failed buttons – bottom-right for active tasks */}
             {isActive && (
-              <div className="flex justify-end pt-3 border-t mt-3">
+              <div className="flex justify-end gap-2 pt-3 border-t mt-3">
+                <Button
+                  size="sm"
+                  onClick={openFailedDialog}
+                  variant="destructive"
+                >
+                  <RiCloseCircleLine className="h-4 w-4 mr-1" />
+                  Failed
+                </Button>
                 <Button
                   size="sm"
                   onClick={handleMarkDone}
@@ -665,6 +720,45 @@ export function ServiceTaskCard({
             </Button>
             <Button onClick={handleUndoStatus} disabled={isUndoingStatus}>
               {isUndoingStatus ? "Updating..." : "Confirm Undo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Failed Dialog */}
+      <Dialog open={failedDialogOpen} onOpenChange={setFailedDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark Service as Failed</DialogTitle>
+            <DialogDescription>
+              Provide a service note explaining why this service failed
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="failed-note">Service Note</Label>
+              <textarea
+                id="failed-note"
+                className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1.5 resize-none"
+                placeholder="Describe the reason for failure..."
+                value={failedNote}
+                onChange={(e) => setFailedNote(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFailedDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleMarkFailed}
+              disabled={isMarkingFailed || !failedNote.trim()}
+            >
+              {isMarkingFailed ? "Marking Failed..." : "Confirm Failed"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -28,6 +28,7 @@ enum ServiceStatus {
   repairing
   done
   picked_up
+  failed
 }
 
 enum ItemType {
@@ -227,6 +228,7 @@ model Service {
   noWa            String
   complaint       String
   passwordPattern String?
+  note            String?
 
   status ServiceStatus @default(received)
 

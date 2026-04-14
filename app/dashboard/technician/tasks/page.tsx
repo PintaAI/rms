@@ -50,7 +50,7 @@ export default function TechnicianTasksPage() {
 
   // Separate tasks by status
   const activeTasks = tasks.filter((t) => t.status === "received" || t.status === "repairing");
-  const completedTasks = tasks.filter((t) => t.status === "done" || t.status === "picked_up");
+  const completedTasks = tasks.filter((t) => t.status === "done" || t.status === "picked_up" || t.status === "failed");
 
   // Loading state – only shown on initial load, not on silent refreshes
   if (isLoading) {

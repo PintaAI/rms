@@ -799,7 +799,8 @@ export async function getTechnicianTasks(): Promise<{
 // Update service status
 export async function updateServiceStatus(
   serviceId: string,
-  status: "received" | "repairing" | "done" | "picked_up"
+  status: "received" | "repairing" | "done" | "picked_up" | "failed",
+  note?: string
 ): Promise<{
   success: boolean;
   error?: string;
@@ -837,12 +838,13 @@ export async function updateServiceStatus(
       return { success: false, error: "You are not assigned to this service" };
     }
 
-    // Update status and set doneAt if status is done
+    // Update status and set doneAt if status is done or failed
     await prisma.service.update({
       where: { id: serviceId },
       data: {
         status,
-        ...(status === "done" ? { doneAt: new Date() } : {}),
+        ...(status === "done" || status === "failed" ? { doneAt: new Date() } : {}),
+        ...(note !== undefined ? { note } : {}),
       },
     });
 
