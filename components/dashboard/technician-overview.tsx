@@ -11,14 +11,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "@/components/ui/table";
-import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -39,6 +31,7 @@ import {
   type RecentService,
   type TechnicianTaskService,
 } from "@/actions/dashboard";
+import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
 import { ServiceTaskCard, type ServiceTaskItem } from "@/components/technician/service-task-card";
 import {
   RiSmartphoneLine,
@@ -82,22 +75,6 @@ function StatCard({ title, value, description, icon }: StatCardProps) {
     </Card>
   );
 }
-
-// Status badge colors
-const statusColors: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  received: "secondary",
-  repairing: "default",
-  done: "outline",
-  picked_up: "default",
-};
-
-// Status labels
-const statusLabels: Record<string, string> = {
-  received: "Received",
-  repairing: "In Progress",
-  done: "Done",
-  picked_up: "Picked Up",
-};
 
 // Format date
 function formatDate(date: Date): string {
@@ -190,6 +167,48 @@ export function TechnicianOverview() {
       hpCatalog: task.hpCatalog,
       items: task.items,
       invoice: task.invoice,
+    }));
+  }, [dashboardData?.myTasks]);
+
+  // Convert availableServices to ServiceTableItem format
+  const availableServicesTableItems: ServiceTableItem[] = useMemo(() => {
+    return (dashboardData?.availableServices || []).map((service) => ({
+      id: service.id,
+      hpCatalogId: service.hpCatalogId,
+      customerName: service.customerName,
+      noWa: service.noWa,
+      complaint: service.complaint,
+      status: service.status,
+      checkinAt: service.checkinAt,
+      passwordPattern: service.passwordPattern,
+      imei: service.imei,
+      hpCatalog: service.hpCatalog,
+      technician: service.technician,
+      invoice: service.invoice,
+      createdBy: service.createdBy,
+    }));
+  }, [dashboardData?.availableServices]);
+
+  // Convert myTasks to ServiceTableItem format
+  const myTasksTableItems: ServiceTableItem[] = useMemo(() => {
+    return (dashboardData?.myTasks || []).map((task) => ({
+      id: task.id,
+      hpCatalogId: task.hpCatalog.id,
+      customerName: task.customerName,
+      noWa: task.noWa,
+      complaint: task.complaint,
+      status: task.status,
+      checkinAt: task.checkinAt,
+      doneAt: task.doneAt,
+      passwordPattern: task.passwordPattern,
+      imei: task.imei,
+      hpCatalog: {
+        modelName: task.hpCatalog.modelName,
+        brand: task.hpCatalog.brand,
+      },
+      technician: task.technician,
+      invoice: task.invoice,
+      createdBy: task.createdBy,
     }));
   }, [dashboardData?.myTasks]);
 
@@ -356,51 +375,19 @@ export function TechnicianOverview() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {availableServices.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              No available services at the moment
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {availableServices.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell className="font-medium">
-                      {service.customerName || "-"}
-                    </TableCell>
-                    <TableCell>{service.noWa}</TableCell>
-                    <TableCell>
-                      {service.hpCatalog.brand.name} {service.hpCatalog.modelName}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {service.complaint}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => handleOpenDetail(service)}
-                      >
-                        Take
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ServiceTable
+            services={availableServicesTableItems}
+            variant="active"
+            showInvoice={false}
+            showTechnician={false}
+            showCreatedBy={false}
+            emptyMessage="No available services at the moment"
+            onMoreClick={(service) => {
+              // Find the original service from availableServices
+              const originalService = availableServices.find(s => s.id === service.id);
+              if (originalService) handleOpenDetail(originalService);
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -416,52 +403,19 @@ export function TechnicianOverview() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {myTasks.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              No tasks assigned to you
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Device</TableHead>
-                  <TableHead>Complaint</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {myTasks.map((service) => (
-                  <TableRow
-                    key={service.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleOpenTaskDetail(service)}
-                  >
-                    <TableCell className="font-medium">
-                      {service.customerName || "-"}
-                    </TableCell>
-                    <TableCell>{service.noWa}</TableCell>
-                    <TableCell>
-                      {service.hpCatalog.brand.name} {service.hpCatalog.modelName}
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {service.complaint}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[service.status] || "outline"}>
-                        {statusLabels[service.status] || service.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {formatDate(service.checkinAt)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          <ServiceTable
+            services={myTasksTableItems}
+            variant="active"
+            showInvoice={true}
+            showTechnician={false}
+            showCreatedBy={false}
+            emptyMessage="No tasks assigned to you"
+            onRowClick={(service) => {
+              // Find the original task from myTasks
+              const originalTask = myTasks.find(t => t.id === service.id);
+              if (originalTask) handleOpenTaskDetail(originalTask);
+            }}
+          />
         </CardContent>
       </Card>
 

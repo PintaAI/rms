@@ -796,6 +796,165 @@ export async function getTechnicianTasks(): Promise<{
   }
 }
 
+// Admin view of all technician tasks in a toko
+export type AdminTechnicianTaskItem = TechnicianTaskItem;
+
+export async function getAdminTechnicianTasks(tokoId: string): Promise<{
+  success: boolean;
+  data?: AdminTechnicianTaskItem[];
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only admin can access this
+    if (user.role !== "admin") {
+      return { success: false, error: "Access denied" };
+    }
+
+    // Get all services that have a technician assigned in the toko
+    const tasks = await prisma.service.findMany({
+      where: {
+        tokoId,
+        technicianId: { not: null },
+      },
+      orderBy: [
+        { status: "asc" }, // received/repairing first, then done/picked_up
+        { checkinAt: "asc" },
+      ],
+      select: {
+        id: true,
+        customerName: true,
+        noWa: true,
+        complaint: true,
+        passwordPattern: true,
+        imei: true,
+        status: true,
+        checkinAt: true,
+        doneAt: true,
+        hpCatalog: {
+          select: {
+            id: true,
+            modelName: true,
+            brand: { select: { name: true } },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            type: true,
+            name: true,
+            qty: true,
+            price: true,
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            grandTotal: true,
+            paymentStatus: true,
+          },
+        },
+      },
+    });
+
+    return { success: true, data: tasks };
+  } catch (error) {
+    console.error("Error fetching admin technician tasks:", error);
+    return { success: false, error: "Failed to fetch tasks" };
+  }
+}
+
+// Get single technician task detail for admin
+export async function getAdminTechnicianTaskDetail(serviceId: string): Promise<{
+  success: boolean;
+  data?: AdminTechnicianTaskItem;
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Only admin can access this
+    if (user.role !== "admin") {
+      return { success: false, error: "Access denied" };
+    }
+
+    // Get the service with technician assigned
+    const task = await prisma.service.findUnique({
+      where: { id: serviceId },
+      select: {
+        id: true,
+        customerName: true,
+        noWa: true,
+        complaint: true,
+        passwordPattern: true,
+        imei: true,
+        status: true,
+        checkinAt: true,
+        doneAt: true,
+        hpCatalog: {
+          select: {
+            id: true,
+            modelName: true,
+            brand: { select: { name: true } },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            type: true,
+            name: true,
+            qty: true,
+            price: true,
+          },
+        },
+        invoice: {
+          select: {
+            id: true,
+            grandTotal: true,
+            paymentStatus: true,
+          },
+        },
+      },
+    });
+
+    if (!task) {
+      return { success: false, error: "Service not found" };
+    }
+
+    return { success: true, data: task };
+  } catch (error) {
+    console.error("Error fetching admin technician task detail:", error);
+    return { success: false, error: "Failed to fetch task detail" };
+  }
+}
+
 // Update service status
 export async function updateServiceStatus(
   serviceId: string,
@@ -1470,5 +1629,56 @@ export async function getAdminDashboardStats(
   } catch (error) {
     console.error("Error fetching admin dashboard stats:", error);
     return { success: false, error: "Failed to fetch dashboard stats" };
+  }
+}
+
+// Get completed service counts for sidebar badge
+export async function getCompletedServiceCounts(tokoId?: string): Promise<{
+  success: boolean;
+  data?: { done: number; failed: number; total: number };
+  error?: string;
+}> {
+  try {
+    const sessionUser = await getUser();
+
+    if (!sessionUser) {
+      return { success: false, error: "Unauthorized" };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { id: true, tokoId: true, role: true },
+    });
+
+    if (!user) {
+      return { success: false, error: "User not found" };
+    }
+
+    // Determine the target tokoId:
+    // - Admin: use the provided tokoId (from toko selector)
+    // - Staff/technician: always use their assigned tokoId
+    const targetTokoId =
+      user.role === "admin" ? tokoId : user.tokoId;
+
+    if (!targetTokoId) {
+      return { success: true, data: { done: 0, failed: 0, total: 0 } };
+    }
+
+    const [done, failed] = await Promise.all([
+      prisma.service.count({
+        where: { tokoId: targetTokoId, status: "done" },
+      }),
+      prisma.service.count({
+        where: { tokoId: targetTokoId, status: "failed" },
+      }),
+    ]);
+
+    return {
+      success: true,
+      data: { done, failed, total: done + failed },
+    };
+  } catch (error) {
+    console.error("Error fetching completed service counts:", error);
+    return { success: false, error: "Failed to fetch counts" };
   }
 }

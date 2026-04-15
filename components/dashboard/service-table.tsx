@@ -128,6 +128,7 @@ interface ServiceTableProps {
   onMarkPaidClick?: (invoiceId: string, serviceId: string) => void;
   onPickupClick?: (serviceId: string) => void;
   onCallClick?: (phone: string, service: ServiceTableItem) => void;
+  onRowClick?: (service: ServiceTableItem) => void;
 
   // UI customization
   emptyMessage?: string;
@@ -146,6 +147,7 @@ export function ServiceTable({
   onMarkPaidClick,
   onPickupClick,
   onCallClick,
+  onRowClick,
   emptyMessage = "No services found",
 }: ServiceTableProps) {
   // Determine which columns to show based on variant
@@ -198,7 +200,11 @@ export function ServiceTable({
           </TableRow>
         ) : (
           services.map((service) => (
-            <TableRow key={service.id}>
+            <TableRow
+              key={service.id}
+              className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
+              onClick={() => onRowClick?.(service)}
+            >
               <TableCell className="font-medium">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
@@ -367,6 +373,7 @@ export function ServiceTable({
                 <TableCell>
                   <DropdownMenu>
                     <DropdownMenuTrigger
+                      onClick={(e) => e.stopPropagation()}
                       render={
                         <Button variant="ghost" size="icon">
                           <RiMoreLine className="h-4 w-4" />
