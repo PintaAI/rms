@@ -1,18 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { searchDevices, createDevice } from "@/actions";
+import { createDevice } from "@/actions";
+import { useDeviceCache } from "@/hooks/use-device-cache";
+import { getBrandIcon } from "@/lib/brand-icons";
+import { HpCatalogOption } from "@/components/staff/device-input";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RiLoader4Line, RiSearchLine, RiAddLine, RiCloseLine, RiCheckLine } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 
-export interface HpCatalogOption {
-  id: string;
-  modelName: string;
-  brandName: string;
-}
+export type { HpCatalogOption };
 
 interface MultiDeviceInputProps {
   value: HpCatalogOption[];
@@ -27,11 +26,14 @@ export function MultiDeviceInput({
 }: MultiDeviceInputProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<HpCatalogOption[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const { searchDevices, refreshCache, isInitialized } = useDeviceCache();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -43,54 +45,39 @@ export function MultiDeviceInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const doSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
-      setResults([]);
-      setShowDropdown(false);
-      setIsSearching(false);
-      return;
-    }
-
-    setIsSearching(true);
-    setShowDropdown(true);
-
-    const result = await searchDevices(searchQuery);
-    if (result.success && result.data) {
-      const filtered = result.data.filter(
-        (d) => !value.some((v) => v.id === d.id)
-      );
-      setResults(filtered);
-    } else {
-      setResults([]);
-    }
-    setIsSearching(false);
-  }, [value]);
-
   useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [results]);
+
+  const debouncedSearch = useCallback((searchQuery: string) => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    if (!query.trim()) {
+    if (!searchQuery.trim()) {
       setResults([]);
       setShowDropdown(false);
-      setIsSearching(false);
       return;
     }
 
-    setIsSearching(true);
     setShowDropdown(true);
 
     searchTimeoutRef.current = setTimeout(() => {
-      doSearch(query);
-    }, 300);
+      const filtered = searchDevices(searchQuery).filter(
+        (d) => !value.some((v) => v.id === d.id)
+      );
+      setResults(filtered);
+    }, 150);
+  }, [value, searchDevices]);
 
+  useEffect(() => {
+    debouncedSearch(query);
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [query, doSearch]);
+  }, [query, debouncedSearch]);
 
   const handleSelect = useCallback((device: HpCatalogOption) => {
     if (value.some((v) => v.id === device.id)) {
@@ -119,6 +106,7 @@ export function MultiDeviceInput({
     setIsCreating(false);
 
     if (result.success && result.data) {
+      await refreshCache();
       if (value.some((v) => v.id === result.data!.id)) {
         setQuery("");
         setShowDropdown(false);
@@ -126,7 +114,36 @@ export function MultiDeviceInput({
       }
       handleSelect(result.data);
     }
-  }, [query, value, handleSelect]);
+  }, [query, value, handleSelect, refreshCache]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        const maxIndex = results.length > 0 ? results.length - 1 : 0;
+        return prev < maxIndex ? prev + 1 : 0;
+      });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        const maxIndex = results.length > 0 ? results.length - 1 : 0;
+        return prev > 0 ? prev - 1 : maxIndex;
+      });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && results[highlightedIndex]) {
+        handleSelect(results[highlightedIndex]);
+      } else if (results.length === 0 && query.trim()) {
+        handleCreate();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowDropdown(false);
+      setHighlightedIndex(-1);
+    }
+  }, [showDropdown, results, highlightedIndex, handleSelect, handleCreate, query]);
 
   const parseDeviceName = useCallback((deviceQuery: string) => {
     const parts = deviceQuery.trim().split(/\s+/);
@@ -150,11 +167,14 @@ export function MultiDeviceInput({
             <Badge
               key={device.id}
               variant="secondary"
-              className="gap-1 pr-1"
+              className="gap-1.5 pr-1 py-1.5"
             >
-              <span>
-                {device.brandName} {device.modelName}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {getBrandIcon(device.brandName)}
+                <span className="text-sm">
+                  {device.brandName} {device.modelName}
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => handleRemove(device.id)}
@@ -169,6 +189,7 @@ export function MultiDeviceInput({
 
       <div className="relative" ref={dropdownRef}>
         <Input
+          ref={inputRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => {
@@ -176,39 +197,47 @@ export function MultiDeviceInput({
               setShowDropdown(true);
             }
           }}
+          onKeyDown={handleKeyDown}
           placeholder="Search or type new device..."
           disabled={disabled || isCreating}
           autoComplete="off"
-          className={cn(
-            "w-full",
-            value.length > 0 && "border-green-500/50 bg-green-500/5"
-          )}
+          className="w-full"
         />
 
         {showDropdown && (
           <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-lg shadow-lg max-h-60 overflow-auto">
-            {isSearching ? (
+            {!isInitialized ? (
               <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
                 <RiLoader4Line className="w-4 h-4 animate-spin" />
-                Searching...
+                Loading devices...
               </div>
             ) : results.length > 0 ? (
               <div className="py-1">
                 <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Existing Devices
                 </div>
-                {results.map((device) => (
+                {results.map((device, index) => (
                   <button
                     key={device.id}
                     type="button"
-                    className="w-full px-3 py-2.5 text-sm text-left hover:bg-accent transition-colors flex items-center justify-between group"
+                    className={cn(
+                      "w-full px-3 py-2.5 text-sm text-left transition-colors flex items-center gap-3",
+                      highlightedIndex === index ? "bg-accent" : "hover:bg-accent"
+                    )}
                     onClick={() => handleSelect(device)}
+                    onMouseEnter={() => setHighlightedIndex(index)}
                   >
-                    <span>
+                    <div className="flex items-center justify-center w-8 h-8 bg-muted/50 rounded-md">
+                      {getBrandIcon(device.brandName)}
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <span className="font-medium">{device.brandName}</span>
                       <span className="text-muted-foreground ml-1">{device.modelName}</span>
-                    </span>
-                    <RiCheckLine className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <RiCheckLine className={cn(
+                      "w-4 h-4 text-muted-foreground transition-opacity",
+                      highlightedIndex === index ? "opacity-100" : "opacity-0"
+                    )} />
                   </button>
                 ))}
               </div>

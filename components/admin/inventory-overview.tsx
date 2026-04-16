@@ -35,8 +35,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  createSparepart,
-  updateSparepart,
   deleteSparepart,
   createServicePricelist,
   updateServicePricelist,
@@ -48,7 +46,6 @@ import {
   RiAddLine,
   RiEditLine,
   RiDeleteBinLine,
-  RiStore2Line,
   RiToolsLine,
   RiFileList3Line,
   RiMoneyDollarCircleLine,
