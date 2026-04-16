@@ -1,20 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { createDevice } from "@/actions";
-import { useDeviceCache } from "@/hooks/use-device-cache";
+import { searchDevices, createDevice } from "@/actions";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  RiCheckLine,
-  RiLoader4Line,
-  RiSearchLine,
-  RiAddLine,
-  RiCloseLine,
-  RiAlertLine,
-} from "@remixicon/react";
+import { RiLoader4Line, RiSearchLine, RiAddLine, RiCloseLine, RiCheckLine } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 
 export interface HpCatalogOption {
@@ -23,38 +14,24 @@ export interface HpCatalogOption {
   brandName: string;
 }
 
-interface DeviceInputProps {
-  value: HpCatalogOption | null;
-  onChange: (device: HpCatalogOption | null) => void;
+interface MultiDeviceInputProps {
+  value: HpCatalogOption[];
+  onChange: (devices: HpCatalogOption[]) => void;
   disabled?: boolean;
-  error?: string | null;
 }
 
-export function DeviceInput({
+export function MultiDeviceInput({
   value,
   onChange,
   disabled = false,
-  error,
-}: DeviceInputProps) {
+}: MultiDeviceInputProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<HpCatalogOption[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const { searchDevices, refreshCache, isInitialized } = useDeviceCache();
-
-  const isSelected = useMemo(() => {
-    return value && `${value.brandName} ${value.modelName}` === query;
-  }, [value, query]);
-
-  useEffect(() => {
-    if (value) {
-      setQuery(`${value.brandName} ${value.modelName}`);
-    }
-  }, [value]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -66,44 +43,69 @@ export function DeviceInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const debouncedSearch = useCallback((searchQuery: string) => {
-    console.log("[DeviceInput] debouncedSearch called:", searchQuery);
-    
+  const doSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setResults([]);
+      setShowDropdown(false);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    setShowDropdown(true);
+
+    const result = await searchDevices(searchQuery);
+    if (result.success && result.data) {
+      const filtered = result.data.filter(
+        (d) => !value.some((v) => v.id === d.id)
+      );
+      setResults(filtered);
+    } else {
+      setResults([]);
+    }
+    setIsSearching(false);
+  }, [value]);
+
+  useEffect(() => {
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
     }
 
-    if (!searchQuery.trim() || isSelected) {
-      console.log("[DeviceInput] Empty or selected, clearing results");
+    if (!query.trim()) {
       setResults([]);
       setShowDropdown(false);
+      setIsSearching(false);
       return;
     }
 
+    setIsSearching(true);
     setShowDropdown(true);
 
     searchTimeoutRef.current = setTimeout(() => {
-      console.log("[DeviceInput] Running search with:", searchQuery, "isInitialized:", isInitialized);
-      const filtered = searchDevices(searchQuery);
-      console.log("[DeviceInput] Search results:", filtered.length);
-      setResults(filtered);
-    }, 150);
-  }, [isSelected, searchDevices, isInitialized]);
+      doSearch(query);
+    }, 300);
 
-  useEffect(() => {
-    debouncedSearch(query);
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [query, debouncedSearch]);
+  }, [query, doSearch]);
 
   const handleSelect = useCallback((device: HpCatalogOption) => {
-    onChange(device);
-    setQuery(`${device.brandName} ${device.modelName}`);
+    if (value.some((v) => v.id === device.id)) {
+      setShowDropdown(false);
+      return;
+    }
+    onChange([...value, device]);
+    setQuery("");
+    setResults([]);
     setShowDropdown(false);
-  }, [onChange]);
+  }, [value, onChange]);
+
+  const handleRemove = useCallback((deviceId: string) => {
+    onChange(value.filter((d) => d.id !== deviceId));
+  }, [value, onChange]);
 
   const handleCreate = useCallback(async () => {
     if (!query.trim()) return;
@@ -117,27 +119,14 @@ export function DeviceInput({
     setIsCreating(false);
 
     if (result.success && result.data) {
-      await refreshCache();
+      if (value.some((v) => v.id === result.data!.id)) {
+        setQuery("");
+        setShowDropdown(false);
+        return;
+      }
       handleSelect(result.data);
     }
-  }, [query, handleSelect, refreshCache]);
-
-  const handleClear = useCallback(() => {
-    onChange(null);
-    setQuery("");
-    inputRef.current?.focus();
-  }, [onChange]);
-
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value);
-    onChange(null);
-  }, [onChange]);
-
-  const handleFocus = useCallback(() => {
-    if (query.trim() && !isSelected) {
-      setShowDropdown(true);
-    }
-  }, [query, isSelected]);
+  }, [query, value, handleSelect]);
 
   const parseDeviceName = useCallback((deviceQuery: string) => {
     const parts = deviceQuery.trim().split(/\s+/);
@@ -154,52 +143,54 @@ export function DeviceInput({
   }, [query, parseDeviceName]);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Label htmlFor="device" className="text-base font-medium">
-          Device
-        </Label>
-        <Badge variant="secondary" className="text-xs">Required</Badge>
-      </div>
+    <div className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {value.map((device) => (
+            <Badge
+              key={device.id}
+              variant="secondary"
+              className="gap-1 pr-1"
+            >
+              <span>
+                {device.brandName} {device.modelName}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleRemove(device.id)}
+                className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
+              >
+                <RiCloseLine className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
 
       <div className="relative" ref={dropdownRef}>
         <Input
-          ref={inputRef}
-          id="device"
           value={query}
-          onChange={handleChange}
-          onFocus={handleFocus}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => {
+            if (query.trim()) {
+              setShowDropdown(true);
+            }
+          }}
           placeholder="Search or type new device..."
           disabled={disabled || isCreating}
           autoComplete="off"
           className={cn(
             "w-full",
-            value && "border-green-500/50 bg-green-500/5"
+            value.length > 0 && "border-green-500/50 bg-green-500/5"
           )}
         />
 
-        {value && !showDropdown && (
-          <div className="flex items-center gap-2 mt-2">
-            <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-              <RiCheckLine className="w-3 h-3 mr-1" />
-              {value.brandName} {value.modelName}
-            </Badge>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
-            >
-              Change
-            </button>
-          </div>
-        )}
-
         {showDropdown && (
           <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-lg shadow-lg max-h-60 overflow-auto">
-            {!isInitialized ? (
+            {isSearching ? (
               <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
                 <RiLoader4Line className="w-4 h-4 animate-spin" />
-                Loading devices...
+                Searching...
               </div>
             ) : results.length > 0 ? (
               <div className="py-1">
@@ -243,7 +234,7 @@ export function DeviceInput({
                   ) : (
                     <>
                       <RiAddLine className="w-4 h-4 mr-2" />
-                      Create "{displayQuery}"
+                      Create &quot;{displayQuery}&quot;
                     </>
                   )}
                 </Button>
@@ -252,13 +243,6 @@ export function DeviceInput({
           </div>
         )}
       </div>
-
-      {error && (
-        <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
-          <RiAlertLine className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
     </div>
   );
 }

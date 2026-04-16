@@ -370,50 +370,51 @@ export function InventoryOverview({
               ) : (
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Default Price</TableHead>
-                      <TableHead>Stock</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Compatible Devices</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
+<TableRow>
+                       <TableHead>Name</TableHead>
+                       <TableHead>Default Price</TableHead>
+                       <TableHead>Stock</TableHead>
+                       <TableHead>Compatible Devices</TableHead>
+                       <TableHead className="text-right">Actions</TableHead>
+                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {spareparts.map((sparepart) => (
-                      <TableRow key={sparepart.id}>
-                        <TableCell className="font-medium">{sparepart.name}</TableCell>
-                        <TableCell>{formatCurrency(sparepart.defaultPrice)}</TableCell>
-                        <TableCell>
-                          <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
-                            {sparepart.stock}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={sparepart.isUniversal ? "default" : "secondary"}>
-                            {sparepart.isUniversal ? "Universal" : "Specific"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {sparepart.isUniversal ? (
-                            <span className="text-muted-foreground text-sm">All devices</span>
-                          ) : sparepart.compatibilities.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {sparepart.compatibilities.slice(0, 3).map((c) => (
-                                <Badge key={c.hpCatalogId} variant="outline" className="text-xs">
-                                  {c.hpCatalog.brand.name} {c.hpCatalog.modelName}
-                                </Badge>
-                              ))}
-                              {sparepart.compatibilities.length > 3 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{sparepart.compatibilities.length - 3} more
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">None</span>
-                          )}
-                        </TableCell>
+<TableRow key={sparepart.id}>
+                         <TableCell className="font-medium">
+                           <div className="flex items-center gap-2">
+                             {sparepart.name}
+                             {sparepart.isUniversal && (
+                               <Badge variant="secondary" className="text-xs">Universal</Badge>
+                             )}
+                           </div>
+                         </TableCell>
+                         <TableCell>{formatCurrency(sparepart.defaultPrice)}</TableCell>
+                         <TableCell>
+                           <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
+                             {sparepart.stock}
+                           </Badge>
+                         </TableCell>
+                         <TableCell>
+                           {sparepart.isUniversal ? (
+                             <span className="text-muted-foreground text-sm">All devices</span>
+                           ) : sparepart.compatibilities.length > 0 ? (
+                             <div className="flex flex-wrap gap-1">
+                               {sparepart.compatibilities.slice(0, 3).map((c) => (
+                                 <Badge key={c.hpCatalogId} variant="outline" className="text-xs">
+                                   {c.hpCatalog.brand.name} {c.hpCatalog.modelName}
+                                 </Badge>
+                               ))}
+                               {sparepart.compatibilities.length > 3 && (
+                                 <Badge variant="outline" className="text-xs">
+                                   +{sparepart.compatibilities.length - 3} more
+                                 </Badge>
+                               )}
+                             </div>
+                           ) : (
+                             <span className="text-muted-foreground text-sm">None</span>
+                           )}
+                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <Button
