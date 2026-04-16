@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createDevice } from "@/actions";
 import { useDeviceCache } from "@/hooks/use-device-cache";
+import { getBrandIcon } from "@/lib/brand-icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +13,8 @@ import {
   RiLoader4Line,
   RiSearchLine,
   RiAddLine,
-  RiCloseLine,
   RiAlertLine,
+  RiEditLine,
 } from "@remixicon/react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,8 @@ export function DeviceInput({
   const [results, setResults] = useState<HpCatalogOption[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [showInput, setShowInput] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -53,6 +56,9 @@ export function DeviceInput({
   useEffect(() => {
     if (value) {
       setQuery(`${value.brandName} ${value.modelName}`);
+      setShowInput(false);
+    } else {
+      setShowInput(true);
     }
   }, [value]);
 
@@ -99,10 +105,15 @@ export function DeviceInput({
     };
   }, [query, debouncedSearch]);
 
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [results]);
+
   const handleSelect = useCallback((device: HpCatalogOption) => {
     onChange(device);
     setQuery(`${device.brandName} ${device.modelName}`);
     setShowDropdown(false);
+    setShowInput(false);
   }, [onChange]);
 
   const handleCreate = useCallback(async () => {
@@ -122,10 +133,40 @@ export function DeviceInput({
     }
   }, [query, handleSelect, refreshCache]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        const maxIndex = results.length > 0 ? results.length - 1 : 0;
+        return prev < maxIndex ? prev + 1 : 0;
+      });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex((prev) => {
+        const maxIndex = results.length > 0 ? results.length - 1 : 0;
+        return prev > 0 ? prev - 1 : maxIndex;
+      });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && results[highlightedIndex]) {
+        handleSelect(results[highlightedIndex]);
+      } else if (results.length === 0 && query.trim()) {
+        handleCreate();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setShowDropdown(false);
+      setHighlightedIndex(-1);
+    }
+  }, [showDropdown, results, highlightedIndex, handleSelect, handleCreate, query]);
+
   const handleClear = useCallback(() => {
     onChange(null);
     setQuery("");
-    inputRef.current?.focus();
+    setShowInput(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
   }, [onChange]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,96 +203,111 @@ export function DeviceInput({
         <Badge variant="secondary" className="text-xs">Required</Badge>
       </div>
 
-      <div className="relative" ref={dropdownRef}>
-        <Input
-          ref={inputRef}
-          id="device"
-          value={query}
-          onChange={handleChange}
-          onFocus={handleFocus}
-          placeholder="Search or type new device..."
-          disabled={disabled || isCreating}
-          autoComplete="off"
-          className={cn(
-            "w-full",
-            value && "border-green-500/50 bg-green-500/5"
-          )}
-        />
-
-        {value && !showDropdown && (
-          <div className="flex items-center gap-2 mt-2">
-            <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-              <RiCheckLine className="w-3 h-3 mr-1" />
-              {value.brandName} {value.modelName}
-            </Badge>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-xs text-muted-foreground hover:text-foreground underline"
-            >
-              Change
-            </button>
+      {value && !showInput ? (
+        <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+          <div className="flex items-center justify-center w-10 h-10 bg-green-500/20 rounded-lg">
+            {getBrandIcon(value.brandName)}
           </div>
-        )}
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm truncate">{value.brandName}</div>
+            <div className="text-muted-foreground text-sm truncate">{value.modelName}</div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleClear}
+            disabled={disabled || isCreating}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <RiEditLine className="w-4 h-4" />
+            Change
+          </Button>
+        </div>
+      ) : (
+        <div className="relative" ref={dropdownRef}>
+          <Input
+            ref={inputRef}
+            id="device"
+            value={query}
+            onChange={handleChange}
+            onFocus={handleFocus}
+            onKeyDown={handleKeyDown}
+            placeholder="Search or type new device..."
+            disabled={disabled || isCreating}
+            autoComplete="off"
+            className="w-full"
+          />
 
-        {showDropdown && (
-          <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-lg shadow-lg max-h-60 overflow-auto">
-            {!isInitialized ? (
-              <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
-                <RiLoader4Line className="w-4 h-4 animate-spin" />
-                Loading devices...
-              </div>
-            ) : results.length > 0 ? (
-              <div className="py-1">
-                <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Existing Devices
+          {showDropdown && (
+            <div className="absolute z-50 w-full mt-1 bg-background border border-input rounded-lg shadow-lg max-h-60 overflow-auto">
+              {!isInitialized ? (
+                <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
+                  <RiLoader4Line className="w-4 h-4 animate-spin" />
+                  Loading devices...
                 </div>
-                {results.map((device) => (
-                  <button
-                    key={device.id}
+              ) : results.length > 0 ? (
+                <div className="py-1">
+                  <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Existing Devices
+                  </div>
+                  {results.map((device, index) => (
+                    <button
+                      key={device.id}
+                      type="button"
+                      className={cn(
+                        "w-full px-3 py-2.5 text-sm text-left transition-colors flex items-center gap-3",
+                        highlightedIndex === index ? "bg-accent" : "hover:bg-accent"
+                      )}
+                      onClick={() => handleSelect(device)}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                    >
+                      <div className="flex items-center justify-center w-8 h-8 bg-muted/50 rounded-md">
+                        {getBrandIcon(device.brandName)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium">{device.brandName}</span>
+                        <span className="text-muted-foreground ml-1">{device.modelName}</span>
+                      </div>
+                      <RiCheckLine className={cn(
+                        "w-4 h-4 text-muted-foreground transition-opacity",
+                        highlightedIndex === index ? "opacity-100" : "opacity-0"
+                      )} />
+                    </button>
+                  ))}
+                </div>
+              ) : query.trim() ? (
+                <div className="p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+                    <RiSearchLine className="w-4 h-4" />
+                    No existing device found
+                  </div>
+                  <Button
                     type="button"
-                    className="w-full px-3 py-2.5 text-sm text-left hover:bg-accent transition-colors flex items-center justify-between group"
-                    onClick={() => handleSelect(device)}
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCreate}
+                    disabled={isCreating}
+                    className="w-full"
                   >
-                    <span>
-                      <span className="font-medium">{device.brandName}</span>
-                      <span className="text-muted-foreground ml-1">{device.modelName}</span>
-                    </span>
-                    <RiCheckLine className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </button>
-                ))}
-              </div>
-            ) : query.trim() ? (
-              <div className="p-4">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-                  <RiSearchLine className="w-4 h-4" />
-                  No existing device found
+                    {isCreating ? (
+                      <>
+                        <RiLoader4Line className="w-4 h-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <RiAddLine className="w-4 h-4 mr-2" />
+                        Create &quot;{displayQuery}&quot;
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCreate}
-                  disabled={isCreating}
-                  className="w-full"
-                >
-                  {isCreating ? (
-                    <>
-                      <RiLoader4Line className="w-4 h-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <RiAddLine className="w-4 h-4 mr-2" />
-                      Create "{displayQuery}"
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md border border-destructive/20">
