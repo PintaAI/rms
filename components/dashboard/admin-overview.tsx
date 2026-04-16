@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToko } from "@/components/toko/toko-provider";
 import {
@@ -10,7 +10,11 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
+import {
+  ServiceTable,
+  type ServiceTableItem,
+  formatCurrency,
+} from "@/components/dashboard/service-table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Pagination,
@@ -21,8 +25,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import type { ServiceListItem, PaginatedResult } from "@/actions/staff";
-import { deleteService } from "@/actions/staff";
+import type { ServiceListItem, PaginatedResult } from "@/actions";
+import { deleteService } from "@/actions";
 import { ServicesForm } from "@/components/staff/services-form";
 import {
   AlertDialog,
@@ -143,16 +147,6 @@ function AlertCard({ alert }: { alert: Alert }) {
   );
 }
 
-// Format currency (Indonesian Rupiah)
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 interface AdminOverviewProps {
   initialServices: ServiceListItem[];
   timeFilter: "daily" | "weekly" | "monthly" | "all";
@@ -182,9 +176,26 @@ export function AdminOverview({
   const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
   const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [services, setServices] = useState<ServiceTableItem[]>(initialServices);
   const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly" | "all">(
     initialTimeFilter
   );
+  
+  // Track pending mutations to prevent useEffect from overwriting optimistic state
+  const pendingMutationsRef = useRef(0);
+
+  useEffect(() => {
+    // Skip sync if there are pending mutations (optimistic updates in progress)
+    if (pendingMutationsRef.current > 0) {
+      pendingMutationsRef.current -= 1;
+      return;
+    }
+    setServices(initialServices);
+  }, [initialServices]);
+
+  useEffect(() => {
+    setTimeFilter(initialTimeFilter);
+  }, [initialTimeFilter]);
 
   // Sync selectedToko → URL so the server page fetches data for the right toko
   const prevTokoId = typeof window !== "undefined"
@@ -234,28 +245,51 @@ export function AdminOverview({
     });
   };
 
-  // Refresh page after service creation/update
-  const handleServiceCreated = useCallback(() => {
-    setEditingService(null);
-    router.refresh();
-  }, [router]);
-
-  // Handle delete service
+  // Handle delete service with optimistic update
   const handleDeleteService = useCallback(async () => {
     if (!deletingService) return;
     
+    const serviceId = deletingService.id;
+    
+    // Track pending mutation
+    pendingMutationsRef.current += 1;
+    
+    // Optimistic update - remove from local state immediately
+    setServices(prev => prev.filter(s => s.id !== serviceId));
+    setDeletingService(null);
+    
     setIsDeleting(true);
-    const result = await deleteService(deletingService.id);
+    const result = await deleteService(serviceId);
     setIsDeleting(false);
     
-    if (result.success) {
-      setDeletingService(null);
-      router.refresh();
-    } else {
-      // Could add toast notification here for error
+    if (!result.success) {
+      // Revert on failure - decrement counter and refresh
+      pendingMutationsRef.current -= 1;
       console.error("Failed to delete service:", result.error);
+      router.refresh();
     }
   }, [deletingService, router]);
+
+  // Handle optimistic create - add service immediately to local state
+  const handleOptimisticCreate = useCallback((tempService: ServiceTableItem) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => [tempService, ...prev]);
+  }, []);
+
+  // Handle optimistic update - update service immediately in local state
+  const handleOptimisticUpdate = useCallback((updatedService: ServiceTableItem) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => prev.map(s => 
+      s.id === updatedService.id ? updatedService : s
+    ));
+  }, []);
+
+  // Handle revert create - remove temp service on failure
+  const handleRevertCreate = useCallback((tempId: string) => {
+    pendingMutationsRef.current -= 1;
+    setServices(prev => prev.filter(s => s.id !== tempId));
+    router.refresh();
+  }, [router]);
 
   // Handle page change
   const handlePageChange = (newPage: number) => {
@@ -268,7 +302,7 @@ export function AdminOverview({
   };
 
   // Data is fetched server-side and passed as props
-  const filteredServices = initialServices;
+  const filteredServices = services;
 
   // Use dashboard stats from server (includes revenue) with fallback
   const stats = {
@@ -461,8 +495,15 @@ export function AdminOverview({
             setEditingService(null);
           }
         }}
-        onSuccess={handleServiceCreated}
+        onSuccess={() => {
+          setEditingService(null);
+          // Don't refresh - optimistic state is already correct
+        }}
         editData={editingService}
+        tokoId={selectedToko?.id}
+        onOptimisticCreate={handleOptimisticCreate}
+        onOptimisticUpdate={handleOptimisticUpdate}
+        onRevertCreate={handleRevertCreate}
       />
 
       {/* Recent Services with Notifications */}
@@ -490,18 +531,16 @@ export function AdminOverview({
         <CardContent className="space-y-4">
           <ServiceTable
             services={filteredServices}
-            variant="active"
-            showInvoice={true}
-            showCreatedBy={true}
+            preset="adminActive"
             emptyMessage="No services found"
-            onEditClick={(service) => {
+            onEdit={(service) => {
               setEditingService(service);
               setShowAddService(true);
             }}
-            onDeleteClick={(service) => {
+            onDelete={(service) => {
               setDeletingService(service);
             }}
-            onTechnicianClick={handleTechnicianClick}
+            onAssignTech={handleTechnicianClick}
           />
           
           {/* Pagination */}

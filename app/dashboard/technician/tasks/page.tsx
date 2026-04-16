@@ -12,13 +12,13 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  getTechnicianTasks,
-  type TechnicianTaskItem,
-} from "@/actions/dashboard";
+  getMyTasks,
+  type ServiceDetail,
+} from "@/actions";
 import { ServiceTaskCard } from "@/components/technician/service-task-card";
 
 export default function TechnicianTasksPage() {
-  const [tasks, setTasks] = useState<TechnicianTaskItem[]>([]);
+  const [tasks, setTasks] = useState<ServiceDetail[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +30,7 @@ export default function TechnicianTasksPage() {
     setError(null);
 
     try {
-      const result = await getTechnicianTasks();
+      const result = await getMyTasks();
       if (result.success && result.data) {
         setTasks(result.data);
       } else {

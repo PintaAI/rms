@@ -10,12 +10,27 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CompletedServiceTable } from "@/components/staff/completed-service-table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ServiceTable,
+  type ServiceTableItem,
+} from "@/components/dashboard/service-table";
 import {
   getCompletedServices,
   getPickedUpServices,
+  pickupService,
+  payInvoice,
   type ServiceListItem,
-} from "@/actions/staff";
+} from "@/actions";
 import { RiRefreshLine, RiHistoryLine } from "@remixicon/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -26,6 +41,12 @@ export default function StaffCompletedPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"ready" | "history">("ready");
+
+  const [isPickupDialogOpen, setIsPickupDialogOpen] = useState(false);
+  const [isPaidDialogOpen, setIsPaidDialogOpen] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!selectedToko) {
@@ -80,7 +101,68 @@ export default function StaffCompletedPage() {
     }
   }, [activeTab, fetchHistoryData]);
 
-  // Loading state
+  const handleCallClick = (phone: string) => {
+    const cleaned = phone.replace(/\D/g, "");
+    const formattedPhone = cleaned.startsWith("0")
+      ? "62" + cleaned.slice(1)
+      : cleaned.startsWith("62")
+        ? cleaned
+        : cleaned;
+    window.open(`https://wa.me/${formattedPhone}`, "_blank");
+  };
+
+  const handlePickupClick = (serviceId: string) => {
+    setSelectedServiceId(serviceId);
+    setIsPickupDialogOpen(true);
+  };
+
+  const handleMarkPaidClick = (invoiceId: string) => {
+    setSelectedInvoiceId(invoiceId);
+    setIsPaidDialogOpen(true);
+  };
+
+  const handleConfirmPickup = async () => {
+    if (!selectedServiceId) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await pickupService(selectedServiceId);
+      if (result.success) {
+        fetchData();
+        setIsPickupDialogOpen(false);
+        setSelectedServiceId(null);
+      } else {
+        alert(result.error || "Failed to mark as picked up");
+      }
+    } catch (error) {
+      console.error("Error marking service as picked up:", error);
+      alert("Failed to mark service as picked up");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleConfirmPaid = async () => {
+    if (!selectedInvoiceId) return;
+
+    setIsProcessing(true);
+    try {
+      const result = await payInvoice(selectedInvoiceId);
+      if (result.success) {
+        fetchData();
+        setIsPaidDialogOpen(false);
+        setSelectedInvoiceId(null);
+      } else {
+        alert(result.error || "Failed to mark invoice as paid");
+      }
+    } catch (error) {
+      console.error("Error marking invoice as paid:", error);
+      alert("Failed to mark invoice as paid");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -99,7 +181,6 @@ export default function StaffCompletedPage() {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="container mx-auto py-6">
@@ -120,7 +201,6 @@ export default function StaffCompletedPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Completed Services</h1>
@@ -138,7 +218,6 @@ export default function StaffCompletedPage() {
         </Button>
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "ready" | "history")}>
         <TabsList>
           <TabsTrigger value="ready">Ready for Pickup</TabsTrigger>
@@ -148,25 +227,27 @@ export default function StaffCompletedPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Ready for Pickup Tab */}
         <TabsContent value="ready" className="mt-4">
           <Card>
             <CardHeader>
               <CardTitle>Ready for Pickup</CardTitle>
               <CardDescription>
-                Services with status "Done" awaiting customer pickup ({services.length})
+                Services with status &quot;Done&quot; awaiting customer pickup ({services.length})
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <CompletedServiceTable
-                services={services}
-                onRefresh={fetchData}
+              <ServiceTable
+                services={services as ServiceTableItem[]}
+                preset="completed"
+                onMarkPaid={handleMarkPaidClick}
+                onCall={handleCallClick}
+                onPickup={handlePickupClick}
+                emptyMessage="No completed or failed services awaiting pickup"
               />
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* History Tab */}
         <TabsContent value="history" className="mt-4">
           <Card>
             <CardHeader>
@@ -176,15 +257,49 @@ export default function StaffCompletedPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <CompletedServiceTable
-                services={historyServices}
-                onRefresh={fetchHistoryData}
-                isHistory={true}
+              <ServiceTable
+                services={historyServices as ServiceTableItem[]}
+                preset="history"
+                emptyMessage="No picked up services in history"
               />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AlertDialog open={isPaidDialogOpen} onOpenChange={setIsPaidDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Payment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mark this invoice as paid? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPaid} disabled={isProcessing}>
+              {isProcessing ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isPickupDialogOpen} onOpenChange={setIsPickupDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Pickup</AlertDialogTitle>
+            <AlertDialogDescription>
+              Mark this service as picked up by the customer? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPickup} disabled={isProcessing}>
+              {isProcessing ? "Processing..." : "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

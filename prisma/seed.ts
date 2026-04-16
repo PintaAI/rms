@@ -3,13 +3,22 @@ import prisma from "../lib/prisma";
 import { hashPassword } from "@better-auth/utils/password";
 
 async function main() {
-  // Clear existing users
+  await prisma.notificationLog.deleteMany({});
+  await prisma.serviceLog.deleteMany({});
+  await prisma.invoice.deleteMany({});
+  await prisma.serviceItem.deleteMany({});
+  await prisma.sparepartCompatibility.deleteMany({});
   await prisma.account.deleteMany({});
   await prisma.session.deleteMany({});
   await prisma.verification.deleteMany({});
+  await prisma.userToko.deleteMany({});
+  await prisma.subscription.deleteMany({});
+  await prisma.service.deleteMany({});
+  await prisma.sparepart.deleteMany({});
+  await prisma.servicePricelist.deleteMany({});
+  await prisma.toko.deleteMany({});
   await prisma.user.deleteMany({});
 
-  // Seed users with different roles
   const users = [
     {
       id: "admin-001",
@@ -37,7 +46,6 @@ async function main() {
   for (const user of users) {
     const hashedPassword = await hashPassword(user.password);
 
-    // Create user
     const createdUser = await prisma.user.create({
       data: {
         id: user.id,
@@ -49,7 +57,6 @@ async function main() {
       },
     });
 
-    // Create account for better-auth
     await prisma.account.create({
       data: {
         id: `${user.id}-account`,
@@ -60,8 +67,39 @@ async function main() {
       },
     });
 
+    if (user.role === "admin") {
+      await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          plan: "free",
+        },
+      });
+    }
+
     console.log(`Created ${user.role}: ${user.email} (password: ${user.password})`);
   }
+
+  const toko = await prisma.toko.create({
+    data: {
+      id: "toko-001",
+      name: "Main Store",
+      address: "123 Main Street",
+      phone: "+1234567890",
+      status: "active",
+    },
+  });
+
+  console.log(`Created toko: ${toko.name}`);
+
+  await prisma.userToko.createMany({
+    data: [
+      { userId: "admin-001", tokoId: toko.id, role: "owner" },
+      { userId: "staff-001", tokoId: toko.id, role: "owner" },
+      { userId: "technician-001", tokoId: toko.id, role: "owner" },
+    ],
+  });
+
+  console.log("Assigned users to toko");
 
   console.log("Seed completed!");
 }

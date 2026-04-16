@@ -24,7 +24,7 @@ export function AddUserForm({ tokoId, role }: AddUserFormProps) {
     name: string;
     email: string;
     role: string;
-    tokoId: string | null;
+    tokoIds: string[];
   } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -142,13 +142,13 @@ export function AddUserForm({ tokoId, role }: AddUserFormProps) {
             <div>
               <div className="font-medium">{searchResult.name}</div>
               <div className="text-sm text-muted-foreground">{searchResult.email}</div>
-              {searchResult.tokoId ? (
+              {searchResult.tokoIds.length > 0 ? (
                 <div className="text-xs text-amber-600">Already assigned to a toko</div>
               ) : (
                 <div className="text-xs text-green-600">Available to assign</div>
               )}
             </div>
-            {!searchResult.tokoId && (
+            {searchResult.tokoIds.length === 0 && (
               <Button
                 size="sm"
                 onClick={handleAssign}

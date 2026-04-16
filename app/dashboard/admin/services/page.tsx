@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
@@ -12,10 +12,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
 import {
-  getStaffServiceList,
-  type ServiceListItem,
+  getServiceList,
   deleteService,
-} from "@/actions/staff";
+  getService,
+  type ServiceListItem,
+} from "@/actions";
+import type { ServiceTableItem as ServiceTableItemType } from "@/components/dashboard/service-table/types";
 import { ServicesForm } from "@/components/staff/services-form";
 import {
   AlertDialog,
@@ -26,7 +28,6 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { TechnicianAssignmentDialog } from "@/components/admin/technician-assignment-dialog";
 import {
   Sheet,
   SheetContent,
@@ -34,9 +35,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ServiceTaskCard, type ServiceTaskItem } from "@/components/technician/service-task-card";
-import {
-  getAdminTechnicianTaskDetail,
-} from "@/actions/dashboard";
 import {
   RiAddLine,
   RiRefreshLine,
@@ -59,31 +57,26 @@ export default function AdminServicesPage() {
   const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Technician assignment state
-  const [techDialogOpen, setTechDialogOpen] = useState(false);
-  const [selectedTechService, setSelectedTechService] = useState<{
-    id: string;
-    technician: { id: string; name: string } | null;
-  } | null>(null);
-
   // Technician task detail sheet state
   const [taskSheetOpen, setTaskSheetOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<ServiceTaskItem | null>(null);
   const [isLoadingTaskDetail, setIsLoadingTaskDetail] = useState(false);
+  
+  // Track pending mutations to prevent fetchData from being called after optimistic update
+  const pendingMutationsRef = useRef(0);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (silent = false) => {
     if (!selectedToko) {
       setError("No toko selected");
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     setError(null);
     try {
-      const result = await getStaffServiceList(selectedToko.id, undefined, 1, 200);
+      const result = await getServiceList(selectedToko.id, undefined, 1, 200);
       if (result.success && result.data) {
-        // Filter to show only active services (received + repairing)
         const activeServices = result.data.data.filter(
           (s: ServiceListItem) => s.status === "received" || s.status === "repairing"
         ) as ServiceTableItem[];
@@ -95,7 +88,7 @@ export default function AdminServicesPage() {
       console.error("Error fetching data:", err);
       setError("Failed to load data");
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [selectedToko]);
 
@@ -121,53 +114,70 @@ export default function AdminServicesPage() {
     setDialogOpen(true);
   };
 
-  // Handle service created/updated
+  // Handle service created/updated - don't refetch, optimistic state is already correct
   const handleServiceCreated = useCallback(() => {
     setEditingService(null);
-    fetchData();
-  }, [fetchData]);
+    // Don't call fetchData - optimistic state is already correct
+  }, []);
 
   // Handle delete
   const handleDeleteService = useCallback(async () => {
     if (!deletingService) return;
 
+    const serviceId = deletingService.id;
     setIsDeleting(true);
-    const result = await deleteService(deletingService.id);
+    
+    // Track pending mutation
+    pendingMutationsRef.current += 1;
+    
+    // Optimistic update - remove from local state immediately
+    setServices(prev => prev.filter(s => s.id !== serviceId));
+    setDeletingService(null);
+
+    const result = await deleteService(serviceId);
     setIsDeleting(false);
 
-    if (result.success) {
-      setDeletingService(null);
-      fetchData();
-    } else {
+    if (!result.success) {
+      // Revert on failure - decrement counter and refetch
+      pendingMutationsRef.current -= 1;
       console.error("Failed to delete service:", result.error);
+      fetchData();
     }
   }, [deletingService, fetchData]);
 
-  // Handle technician click
-  const handleTechnicianClick = (service: ServiceTableItem) => {
-    setSelectedTechService({
-      id: service.id,
-      technician: service.technician && service.technician.id
-        ? { id: service.technician.id, name: service.technician.name }
-        : null,
-    });
-    setTechDialogOpen(true);
-  };
+  // Handle optimistic create - add service immediately to local state
+  const handleOptimisticCreate = useCallback((tempService: ServiceTableItemType) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => [tempService, ...prev]);
+  }, []);
 
+  // Handle optimistic update - update service immediately in local state
+  const handleOptimisticUpdate = useCallback((updatedService: ServiceTableItemType) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => prev.map(s => 
+      s.id === updatedService.id ? updatedService : s
+    ));
+  }, []);
+
+  // Handle revert create - remove temp service on failure
+  const handleRevertCreate = useCallback((tempId: string) => {
+    pendingMutationsRef.current -= 1;
+    setServices(prev => prev.filter(s => s.id !== tempId));
+    fetchData(true);
+  }, [fetchData]);
+
+  // Handle technician assignment change
   const handleAssignmentChange = () => {
-    fetchData();
+    fetchData(true); // silent reload
   };
 
-  // Handle row click - open task detail sheet for services with technician
+  // Handle row click - open task detail sheet
   const handleRowClick = async (service: ServiceTableItem) => {
-    // Only open task sheet for services that have a technician assigned
-    if (!service.technician?.id) return;
-    
     setIsLoadingTaskDetail(true);
     setTaskSheetOpen(true);
     
     try {
-      const result = await getAdminTechnicianTaskDetail(service.id);
+      const result = await getService(service.id);
       if (result.success && result.data) {
         setSelectedTaskDetail(result.data);
       } else {
@@ -252,6 +262,10 @@ export default function AdminServicesPage() {
         }}
         onSuccess={handleServiceCreated}
         editData={editingService}
+        tokoId={selectedToko?.id}
+        onOptimisticCreate={handleOptimisticCreate}
+        onOptimisticUpdate={handleOptimisticUpdate}
+        onRevertCreate={handleRevertCreate}
       />
 
       {/* Stats Cards */}
@@ -293,21 +307,21 @@ export default function AdminServicesPage() {
           size="sm"
           onClick={() => setFilter("all")}
         >
-          All ({services.length})
+          Semua ({services.length})
         </Button>
         <Button
           variant={filter === "received" ? "default" : "outline"}
           size="sm"
           onClick={() => setFilter("received")}
         >
-          Received ({stats.received})
+          Masuk ({stats.received})
         </Button>
         <Button
           variant={filter === "repairing" ? "default" : "outline"}
           size="sm"
           onClick={() => setFilter("repairing")}
         >
-          In Progress ({stats.repairing})
+          Sedang di service ({stats.repairing})
         </Button>
       </div>
 
@@ -323,7 +337,7 @@ export default function AdminServicesPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={fetchData}
+            onClick={() => fetchData()}
             disabled={isLoading}
           >
             <RiRefreshLine className="h-4 w-4" />
@@ -332,13 +346,12 @@ export default function AdminServicesPage() {
         <CardContent>
           <ServiceTable
             services={filteredServices}
-            variant="active"
-            showInvoice={true}
-            showCreatedBy={true}
+            preset="adminActive"
             emptyMessage="No active services found"
-            onEditClick={handleEditClick}
-            onDeleteClick={(service) => setDeletingService(service)}
-            onTechnicianClick={handleTechnicianClick}
+            onEdit={handleEditClick}
+            onDelete={(service) => setDeletingService(service)}
+            onAssignTech={handleAssignmentChange}
+            tokoId={selectedToko?.id}
             onRowClick={handleRowClick}
           />
         </CardContent>
@@ -361,18 +374,6 @@ export default function AdminServicesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Technician Assignment Dialog */}
-      {selectedTechService && selectedToko && (
-        <TechnicianAssignmentDialog
-          open={techDialogOpen}
-          onOpenChange={setTechDialogOpen}
-          serviceId={selectedTechService.id}
-          tokoId={selectedToko.id}
-          currentTechnician={selectedTechService.technician}
-          onAssignmentChange={handleAssignmentChange}
-        />
-      )}
-
       {/* Technician Task Detail Sheet */}
       <Sheet open={taskSheetOpen} onOpenChange={setTaskSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-4xl h-[85vh] sm:max-w-2xl mx-auto overflow-y-auto">
@@ -394,14 +395,18 @@ export default function AdminServicesPage() {
                 task={selectedTaskDetail}
                 variant="active"
                 onRefresh={() => {
-                  fetchData();
-                  // Also refresh the task detail
+                  fetchData(true);
                   if (selectedTaskDetail) {
-                    getAdminTechnicianTaskDetail(selectedTaskDetail.id).then((result) => {
+                    getService(selectedTaskDetail.id).then((result) => {
                       if (result.success && result.data) {
                         setSelectedTaskDetail(result.data);
                       }
                     });
+                  }
+                }}
+                onStatusChange={(status) => {
+                  if (status === "done" || status === "failed") {
+                    setTaskSheetOpen(false);
                   }
                 }}
               />

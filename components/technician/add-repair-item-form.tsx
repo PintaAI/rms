@@ -1,5 +1,46 @@
 "use client";
 
+/**
+ * AddRepairItemForm - Dialog for adding spareparts or services to a repair task
+ *
+ * OPTIMISTIC UI CALLBACKS:
+ * This form supports optimistic UI updates via three callbacks:
+ *
+ * 1. `onAddItem` - Called BEFORE the server request with a temp item:
+ *    - Receives: { id: `temp-${timestamp}`, type, name, qty, price }
+ *    - Parent should: increment pendingMutationsRef, add item to localTask.items
+ *    - Dialog closes immediately for instant feedback
+ *
+ * 2. `onSuccess` - Called AFTER server request succeeds:
+ *    - Parent should: decrement pendingMutationsRef, trigger silent re-fetch
+ *    - Re-fetch brings the real item (with server ID) replacing the temp item
+ *
+ * 3. `onAddItemError` - Called if server request fails:
+ *    - Parent should: decrement pendingMutationsRef, revert localTask to previous state
+ *
+ * CRITICAL: `onSuccess` must be called AFTER server success, not before.
+ * Calling it too early causes the re-fetch to return stale data (server hasn't saved),
+ * and the temp item disappears because pendingMutationsRef === 0 allows sync.
+ *
+ * EXAMPLE USAGE:
+ * ```tsx
+ * <AddRepairItemForm
+ *   onAddItem={(item) => {
+ *     pendingMutationsRef.current += 1;
+ *     setLocalTask(prev => ({ ...prev, items: [...prev.items, item] }));
+ *   }}
+ *   onSuccess={() => {
+ *     pendingMutationsRef.current -= 1;
+ *     onRefresh?.();  // Silent re-fetch
+ *   }}
+ *   onAddItemError={() => {
+ *     pendingMutationsRef.current -= 1;
+ *     setLocalTask(snapshot);  // Revert
+ *   }}
+ * />
+ * ```
+ */
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +54,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { addServiceItem } from "@/actions/dashboard";
+import { addItem } from "@/actions";
 import { cn } from "@/lib/utils";
 
 function formatCurrency(amount: number): string {
@@ -106,13 +147,10 @@ export function AddRepairItemForm({
     };
     onAddItem?.(newItem);
 
-    // Close dialog immediately for optimistic UI - don't wait for server
     handleOpenChange(false);
-    onSuccess();
 
-    // Continue server call in background (fire-and-forget with error handling)
     try {
-      const result = await addServiceItem({
+      const result = await addItem({
         serviceId,
         type: itemType,
         sparepartId: itemType === "sparepart" ? selectedSparepartId : undefined,
@@ -121,14 +159,14 @@ export function AddRepairItemForm({
         price: parseInt(itemPrice, 10),
       });
 
-      if (!result.success) {
-        // Revert the optimistic add in the parent on failure
+      if (result.success) {
+        onSuccess();
+      } else {
         onAddItemError?.();
         onError(result.error || "Failed to add item");
       }
     } catch (err) {
       console.error("Error adding item:", err);
-      // Revert the optimistic add in the parent on error
       onAddItemError?.();
       onError("Failed to add item");
     }

@@ -1,30 +1,39 @@
-"use server";
+"use server"
 
-import prisma from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
-import { z } from "zod";
-import { getUser } from "@/lib/get-session";
+import prisma from "@/lib/prisma"
+import { revalidatePath } from "next/cache"
+import { z } from "zod"
+import {
+  getAuthUser,
+  requireAdmin,
+  requireTokoAccess,
+  unauthorized,
+  forbidden,
+  notFound,
+  canAccessToko,
+  getSubscriptionLimit,
+  type ActionResult,
+  type ActionResultWithData,
+} from "@/lib/rbac"
 
-// Types
 export type Toko = {
-  id: string;
-  name: string;
-  address: string | null;
-  phone: string | null;
-  logoUrl: string | null;
-  status: "active" | "inactive";
-  createdAt: Date;
-  updatedAt: Date;
-};
+  id: string
+  name: string
+  address: string | null
+  phone: string | null
+  logoUrl: string | null
+  status: "active" | "inactive"
+  createdAt: Date
+  updatedAt: Date
+}
 
-// Validation schemas
 const createTokoSchema = z.object({
   name: z.string().min(1, "Name is required"),
   address: z.string().optional(),
   phone: z.string().optional(),
   logoUrl: z.string().url().optional().nullable(),
   status: z.enum(["active", "inactive"]).optional(),
-});
+})
 
 const updateTokoSchema = z.object({
   id: z.string(),
@@ -33,217 +42,210 @@ const updateTokoSchema = z.object({
   phone: z.string().nullable().optional(),
   logoUrl: z.string().url().nullable().optional(),
   status: z.enum(["active", "inactive"]).optional(),
-});
+})
 
-// READ - Get all Toko (filtered by user's toko)
-export async function getAllToko(): Promise<{
-  success: boolean;
-  data?: Toko[];
-  error?: string;
-}> {
+export async function getAllToko(): Promise<ActionResultWithData<Toko[]>> {
   try {
-    const sessionUser = await getUser();
-    
-    if (!sessionUser) {
-      return {
-        success: false,
-        error: "Unauthorized",
-      };
+    const user = await getAuthUser()
+    if (!user) return unauthorized()
+
+    if (user.tokoIds.length === 0) {
+      return forbidden("User is not assigned to any toko")
     }
 
-    // Fetch the user's tokoId from database
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { tokoId: true, role: true },
-    });
-
-    if (!user) {
-      return {
-        success: false,
-        error: "User not found",
-      };
-    }
-
-    // Admin (tokoId is null) can see all toko
-    // Staff/technician can only see their own toko
     const tokoList = await prisma.toko.findMany({
-      where: user.tokoId ? { id: user.tokoId } : undefined,
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+      where: { id: { in: user.tokoIds } },
+      orderBy: { createdAt: "desc" },
+    })
 
-    return {
-      success: true,
-      data: tokoList,
-    };
+    return { success: true, data: tokoList }
   } catch (error) {
-    console.error("Error fetching toko:", error);
-    return {
-      success: false,
-      error: "Failed to fetch toko data",
-    };
+    console.error("Error fetching toko:", error)
+    return { success: false, error: "Failed to fetch toko data" }
   }
 }
 
-// READ - Get Toko by ID
-export async function getTokoById(id: string): Promise<{
-  success: boolean;
-  data?: Toko;
-  error?: string;
-}> {
+export async function getTokoById(id: string): Promise<ActionResultWithData<Toko>> {
   try {
+    const user = await getAuthUser()
+    if (!user) return unauthorized()
+
     const toko = await prisma.toko.findUnique({
       where: { id },
-    });
+    })
 
-    if (!toko) {
-      return {
-        success: false,
-        error: "Toko not found",
-      };
-    }
+    if (!toko) return notFound("Toko")
 
-    return {
-      success: true,
-      data: toko,
-    };
+    if (!canAccessToko(user, id)) return forbidden()
+
+    return { success: true, data: toko }
   } catch (error) {
-    console.error("Error fetching toko:", error);
-    return {
-      success: false,
-      error: "Failed to fetch toko data",
-    };
+    console.error("Error fetching toko:", error)
+    return { success: false, error: "Failed to fetch toko data" }
   }
 }
 
-// CREATE - Create new Toko
 export async function createToko(
   data: z.infer<typeof createTokoSchema>
-): Promise<{
-  success: boolean;
-  data?: Toko;
-  error?: string;
-}> {
+): Promise<ActionResultWithData<Toko>> {
   try {
-    const validatedData = createTokoSchema.parse(data);
+    const user = await requireAdmin()
+
+    const plan = user.subscription?.plan ?? "free"
+    const limit = getSubscriptionLimit(plan)
+
+    const currentCount = await prisma.userToko.count({
+      where: { userId: user.id },
+    })
+
+    if (currentCount >= limit) {
+      return forbidden(`Toko limit reached (${limit} for ${plan} plan). Upgrade to create more.`)
+    }
+
+    const validated = createTokoSchema.parse(data)
 
     const toko = await prisma.toko.create({
       data: {
-        name: validatedData.name,
-        address: validatedData.address || null,
-        phone: validatedData.phone || null,
-        logoUrl: validatedData.logoUrl || null,
-        status: validatedData.status || "active",
+        name: validated.name,
+        address: validated.address || null,
+        phone: validated.phone || null,
+        logoUrl: validated.logoUrl || null,
+        status: validated.status || "active",
       },
-    });
+    })
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/admin/toko");
+    await prisma.userToko.create({
+      data: {
+        userId: user.id,
+        tokoId: toko.id,
+        role: "owner",
+      },
+    })
 
-    return {
-      success: true,
-      data: toko,
-    };
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/admin/toko")
+
+    return { success: true, data: toko }
   } catch (error) {
-    console.error("Error creating toko:", error);
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized()
+    if (error instanceof Error && error.message === "Access denied") return forbidden()
     if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        error: error.issues[0].message,
-      };
+      return { success: false, error: error.issues[0].message }
     }
-    return {
-      success: false,
-      error: "Failed to create toko",
-    };
+    console.error("Error creating toko:", error)
+    return { success: false, error: "Failed to create toko" }
   }
 }
 
-// UPDATE - Update Toko
 export async function updateToko(
   data: z.infer<typeof updateTokoSchema>
-): Promise<{
-  success: boolean;
-  data?: Toko;
-  error?: string;
-}> {
+): Promise<ActionResultWithData<Toko>> {
   try {
-    const validatedData = updateTokoSchema.parse(data);
-    const { id, ...updateData } = validatedData;
+    const user = await requireAdmin()
 
-    // Check if toko exists
+    const validated = updateTokoSchema.parse(data)
+    const { id, ...updateData } = validated
+
+    await requireTokoAccess(id)
+
     const existingToko = await prisma.toko.findUnique({
       where: { id },
-    });
+    })
 
-    if (!existingToko) {
-      return {
-        success: false,
-        error: "Toko not found",
-      };
-    }
+    if (!existingToko) return notFound("Toko")
 
     const toko = await prisma.toko.update({
       where: { id },
       data: updateData,
-    });
+    })
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/admin/toko");
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/admin/toko")
 
-    return {
-      success: true,
-      data: toko,
-    };
+    return { success: true, data: toko }
   } catch (error) {
-    console.error("Error updating toko:", error);
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized()
+    if (error instanceof Error && error.message === "Access denied") return forbidden()
     if (error instanceof z.ZodError) {
-      return {
-        success: false,
-        error: error.issues[0].message,
-      };
+      return { success: false, error: error.issues[0].message }
     }
-    return {
-      success: false,
-      error: "Failed to update toko",
-    };
+    console.error("Error updating toko:", error)
+    return { success: false, error: "Failed to update toko" }
   }
 }
 
-// DELETE - Delete Toko
-export async function deleteToko(id: string): Promise<{
-  success: boolean;
-  error?: string;
-}> {
+export async function deleteToko(id: string): Promise<ActionResult> {
   try {
-    // Check if toko exists
+    const user = await requireAdmin()
+
+    await requireTokoAccess(id)
+
     const existingToko = await prisma.toko.findUnique({
       where: { id },
-    });
+      select: {
+        id: true,
+        userAssignments: { select: { userId: true }, take: 1 },
+        services: { select: { id: true }, take: 1 },
+        spareparts: { select: { id: true }, take: 1 },
+      },
+    })
 
-    if (!existingToko) {
-      return {
-        success: false,
-        error: "Toko not found",
-      };
+    if (!existingToko) return notFound("Toko")
+
+    if (existingToko.userAssignments.length > 1) {
+      return forbidden("Cannot delete toko with other assigned users")
     }
 
-    await prisma.toko.delete({
-      where: { id },
-    });
+    if (existingToko.services.length > 0) {
+      return forbidden("Cannot delete toko with service records")
+    }
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/admin/toko");
+    if (existingToko.spareparts.length > 0) {
+      return forbidden("Cannot delete toko with spareparts")
+    }
+
+    await prisma.$transaction([
+      prisma.userToko.deleteMany({ where: { tokoId: id } }),
+      prisma.toko.delete({ where: { id } }),
+    ])
+
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/admin/toko")
+
+    return { success: true }
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized()
+    if (error instanceof Error && error.message === "Access denied") return forbidden()
+    console.error("Error deleting toko:", error)
+    return { success: false, error: "Failed to delete toko" }
+  }
+}
+
+export async function getTokoLimit(): Promise<
+  ActionResultWithData<{ current: number; limit: number; plan: string }>
+> {
+  try {
+    const user = await requireAdmin()
+
+    const plan = user.subscription?.plan ?? "free"
+    const limit = getSubscriptionLimit(plan)
+
+    const currentCount = await prisma.userToko.count({
+      where: { userId: user.id },
+    })
 
     return {
       success: true,
-    };
+      data: {
+        current: currentCount,
+        limit: limit === Infinity ? -1 : limit,
+        plan,
+      },
+    }
   } catch (error) {
-    console.error("Error deleting toko:", error);
-    return {
-      success: false,
-      error: "Failed to delete toko",
-    };
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized()
+    if (error instanceof Error && error.message === "Access denied") return forbidden()
+    console.error("Error fetching toko limit:", error)
+    return { success: false, error: "Failed to fetch toko limit" }
   }
 }

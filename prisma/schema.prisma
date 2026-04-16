@@ -23,6 +23,16 @@ enum TokoStatus {
   inactive
 }
 
+enum SubscriptionPlan {
+  free
+  premium
+  enterprise
+}
+
+enum TokoUserRole {
+  owner
+}
+
 enum ServiceStatus {
   received
   repairing
@@ -55,11 +65,10 @@ model Toko {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  // Relations - each toko has its own data
-  users             User[]
-  spareparts        Sparepart[]
+  userAssignments  UserToko[]
+  spareparts       Sparepart[]
   servicePricelists ServicePricelist[]
-  services          Service[]
+  services         Service[]
 
   @@index([status])
   @@map("toko")
@@ -73,25 +82,46 @@ model User {
   image         String?
   password      String?
   role          UserRole @default(staff)
-  tokoId        String? // null for admin, required for staff/technician
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  // Auth relations
-  sessions Session[]
-  accounts Account[]
-
-  // Toko relation
-  toko Toko? @relation(fields: [tokoId], references: [id])
-
-  // Repair shop relations
+  sessions       Session[]
+  accounts       Account[]
+  tokoAssignments UserToko[]
+  subscription   Subscription?
   createdServices  Service[]    @relation("ServiceCreatedBy")
   assignedServices Service[]    @relation("ServiceTechnician")
   serviceLogs      ServiceLog[]
 
-  @@index([tokoId])
   @@index([role])
   @@map("user")
+}
+
+model UserToko {
+  userId   String
+  tokoId   String
+  role     TokoUserRole @default(owner)
+  createdAt DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toko Toko @relation(fields: [tokoId], references: [id], onDelete: Cascade)
+
+  @@id([userId, tokoId])
+  @@index([userId])
+  @@index([tokoId])
+  @@map("user_toko")
+}
+
+model Subscription {
+  id        String           @id @default(uuid())
+  userId    String           @unique
+  plan      SubscriptionPlan @default(free)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscription")
 }
 
 model Session {

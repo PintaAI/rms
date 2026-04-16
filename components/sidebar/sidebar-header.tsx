@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/components/auth-provider";
 import { useToko } from "@/components/toko/toko-provider";
+import { SubscriptionBadge } from "@/components/subscription-badge";
 import { useRouter } from "next/navigation";
 import { RiStore2Line, RiArrowDownSLine, RiCheckLine, RiSettings4Line } from "@remixicon/react";
 
@@ -172,6 +173,11 @@ export function SidebarHeaderComponent() {
             </DropdownMenu>
           )}
         </SidebarMenuItem>
+        {role === "admin" && (
+          <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+            <SubscriptionBadge />
+          </SidebarMenuItem>
+        )}
       </SidebarMenu>
     </SidebarHeader>
   );

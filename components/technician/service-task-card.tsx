@@ -1,5 +1,49 @@
 "use client";
 
+/**
+ * ServiceTaskCard - A card component for displaying and managing service tasks
+ *
+ * FEATURES:
+ * - Displays service details: device, customer, complaint, items, invoice
+ * - Optimistic UI updates for all mutations (add/remove items, status changes)
+ * - Two variants: "active" (for in-progress tasks) and "completed" (for done/picked_up/failed)
+ * - Built-in dialogs for marking done/failed, undoing status, adding items, viewing pattern lock
+ *
+ * OPTIMISTIC UI ARCHITECTURE:
+ * This component implements optimistic updates to provide instant feedback while
+ * server mutations run in background. The pattern uses:
+ *
+ * 1. `localTask` state - local copy that receives optimistic updates immediately
+ * 2. `pendingMutationsRef` - counter of in-flight mutations
+ * 3. `taskFingerprint` - stable identity for prop comparison
+ *
+ * MUTATION LIFECYCLE:
+ * - Before mutation: pendingMutationsRef += 1, apply optimistic update to localTask
+ * - During mutation: useEffect skips syncing because pendingMutationsRef > 0
+ * - On success: pendingMutationsRef -= 1, call onRefresh() to trigger parent re-fetch
+ * - On failure: pendingMutationsRef -= 1, revert localTask to pre-mutation snapshot
+ *
+ * REQUIRED USAGE:
+ * Parent MUST provide `onRefresh` that triggers a silent re-fetch:
+ *   onRefresh={() => fetchData(true)}  // silent=true skips loading state
+ *
+ * Without silent refresh, the loading state will unmount the card and destroy
+ * optimistic state, causing items to "reappear" or disappear incorrectly.
+ *
+ * EXAMPLE:
+ * ```tsx
+ * <ServiceTaskCard
+ *   task={task}
+ *   variant="active"
+ *   onRefresh={() => fetchTasks(true)}  // MUST be silent re-fetch
+ * />
+ * ```
+ *
+ * OPTIONAL PROPS:
+ * - `onUpdateStatus`, `onAddItem`, `onRemoveItem`: Override default handlers
+ *   for parent-controlled mutations (e.g., when using a shared dialog)
+ */
+
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Card,
@@ -45,11 +89,11 @@ import {
 } from "@remixicon/react";
 import { PatternLock } from "@/components/pattern-lock";
 import {
-  updateServiceStatus,
-  removeServiceItem,
-  getTechnicianSpareparts,
-  getTechnicianServicePricelists,
-} from "@/actions/dashboard";
+  updateStatus,
+  removeItem,
+  getCompatibleSpareparts,
+  getServicePricelists,
+} from "@/actions";
 import { AddRepairItemForm } from "@/components/technician/add-repair-item-form";
 
 // Status badge colors
@@ -101,6 +145,7 @@ function parsePatternString(patternStr: string | null): number[] {
 
 export interface ServiceTaskItem {
   id: string;
+  tokoId: string;
   customerName: string | null;
   noWa: string;
   complaint: string;
@@ -133,19 +178,19 @@ export interface ServiceTaskItem {
 export interface ServiceTaskCardProps {
   task: ServiceTaskItem;
   variant?: "active" | "completed";
-  onUpdateStatus?: (taskId: string, currentStatus: string) => void;
   onAddItem?: (task: ServiceTaskItem) => void;
   onRemoveItem?: (itemId: string) => void;
   onRefresh?: () => void;
+  onStatusChange?: (newStatus: string) => void;
 }
 
 export function ServiceTaskCard({
   task,
   variant = "active",
-  onUpdateStatus,
   onAddItem,
   onRemoveItem,
   onRefresh,
+  onStatusChange,
 }: ServiceTaskCardProps) {
   const isActive = variant === "active";
 
@@ -211,8 +256,8 @@ export function ServiceTaskCard({
     if (!isActive) return;
     async function fetchData() {
       const [sparepartsResult, pricelistsResult] = await Promise.all([
-        getTechnicianSpareparts(localTask.hpCatalog.id),
-        getTechnicianServicePricelists(),
+        getCompatibleSpareparts(localTask.tokoId, localTask.hpCatalog.id),
+        getServicePricelists(localTask.tokoId),
       ]);
       if (sparepartsResult.success && sparepartsResult.data) {
         setSpareparts(sparepartsResult.data);
@@ -222,7 +267,7 @@ export function ServiceTaskCard({
       }
     }
     fetchData();
-  }, [isActive, localTask.hpCatalog.id]);
+  }, [isActive, localTask.tokoId, localTask.hpCatalog.id]);
 
   // ─── Handlers ──────────────────────────────────────────────────────────────
 
@@ -257,7 +302,7 @@ export function ServiceTaskCard({
     }));
 
     try {
-      const result = await updateServiceStatus(snapshot.id, undoStatus as any);
+      const result = await updateStatus(snapshot.id, undoStatus as "received" | "repairing");
       if (result.success) {
         setUndoDialogOpen(false);
         // Allow the next prop change (from the silent re-fetch) to sync
@@ -287,7 +332,7 @@ export function ServiceTaskCard({
     setLocalTask((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== itemId) }));
 
     try {
-      const result = await removeServiceItem(itemId);
+      const result = await removeItem(itemId);
       if (result.success) {
         // Allow the next prop change (from the silent re-fetch) to sync
         pendingMutationsRef.current -= 1;
@@ -363,7 +408,7 @@ export function ServiceTaskCard({
     }));
 
     try {
-      const result = await updateServiceStatus(
+      const result = await updateStatus(
         snapshot.id,
         "done",
         doneNote.trim() || undefined
@@ -372,6 +417,7 @@ export function ServiceTaskCard({
         setDoneDialogOpen(false);
         pendingMutationsRef.current -= 1;
         onRefresh?.();
+        onStatusChange?.("done");
       } else {
         pendingMutationsRef.current -= 1;
         setLocalTask(snapshot);
@@ -407,11 +453,12 @@ export function ServiceTaskCard({
     }));
 
     try {
-      const result = await updateServiceStatus(snapshot.id, "failed", failedNote.trim());
+      const result = await updateStatus(snapshot.id, "failed", failedNote.trim());
       if (result.success) {
         setFailedDialogOpen(false);
         pendingMutationsRef.current -= 1;
         onRefresh?.();
+        onStatusChange?.("failed");
       } else {
         pendingMutationsRef.current -= 1;
         setLocalTask(snapshot);
@@ -457,7 +504,7 @@ export function ServiceTaskCard({
                   }}
                 >
                   <RiAddLine className="h-4 w-4 xs:mr-1" />
-                  <span className="xs:inline">Add Item</span>
+                  <span className="xs:inline">Tambah Sparepart & jasa</span>
                 </Button>
               </div>
             )}
@@ -626,7 +673,7 @@ export function ServiceTaskCard({
                   variant="destructive"
                 >
                   <RiCloseCircleLine className="h-4 w-4 mr-1" />
-                  Failed
+                  Gagal Servis
                 </Button>
                 <Button
                   size="sm"
@@ -634,7 +681,7 @@ export function ServiceTaskCard({
                   className="bg-green-600 hover:bg-green-700 text-white"
                 >
                   <RiCheckDoubleLine className="h-4 w-4 mr-1" />
-                  Done
+                  Selesai Servis
                 </Button>
               </div>
             )}

@@ -1,41 +1,30 @@
-import { StaffOverview } from "@/components/dashboard/staff-overview";
-import { getStaffServiceList, type TimeFilter } from "@/actions/staff";
-import { getUser } from "@/lib/get-session";
-import prisma from "@/lib/prisma";
-import { redirect } from "next/navigation";
+import { StaffOverview } from "@/components/dashboard/staff-overview"
+import { getServiceList } from "@/actions"
+import type { ServiceTimeFilter } from "@/actions"
+import { getAuthUser } from "@/lib/rbac"
+import { redirect } from "next/navigation"
 
 interface StaffPageProps {
   searchParams: Promise<{
-    filter?: TimeFilter;
-    page?: string;
-  }>;
+    filter?: ServiceTimeFilter
+    page?: string
+  }>
 }
 
 export default async function StaffPage({ searchParams }: StaffPageProps) {
-  const sessionUser = await getUser();
-  
-  if (!sessionUser) {
-    redirect("/auth");
+  const user = await getAuthUser()
+
+  if (!user || user.tokoIds.length === 0) {
+    redirect("/auth")
   }
 
-  // Get user's toko info
-  const user = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: { tokoId: true, role: true },
-  });
+  const params = await searchParams
+  const timeFilter: ServiceTimeFilter = (params.filter === "all" ? undefined : params.filter) || "daily"
+  const page = params.page ? parseInt(params.page, 10) : 1
+  const tokoId = user.tokoIds[0]
 
-  if (!user || !user.tokoId) {
-    redirect("/auth");
-  }
+  const result = await getServiceList(tokoId, timeFilter, page, 15)
+  const paginatedData = result.success && result.data ? result.data : { data: [], total: 0, page: 1, pageSize: 15, totalPages: 0 }
 
-  // Get time filter and page from search params
-  const params = await searchParams;
-  const timeFilter: TimeFilter = params.filter || "daily";
-  const page = params.page ? parseInt(params.page, 10) : 1;
-
-  // Fetch services with server-side filtering and pagination
-  const result = await getStaffServiceList(user.tokoId, timeFilter, page, 15);
-  const paginatedData = result.success && result.data ? result.data : { data: [], total: 0, page: 1, pageSize: 15, totalPages: 0 };
-
-  return <StaffOverview initialServices={paginatedData.data} timeFilter={timeFilter} pagination={paginatedData} />;
+  return <StaffOverview initialServices={paginatedData.data} timeFilter={timeFilter} pagination={paginatedData} />
 }

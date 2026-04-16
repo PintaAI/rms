@@ -25,12 +25,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  getTechnicianDashboardData,
-  technicianTakeService,
+  getTechnicianDashboard,
+  takeService,
   type TechnicianDashboardData,
-  type RecentService,
-  type TechnicianTaskService,
-} from "@/actions/dashboard";
+  type ServiceListItem,
+  type ServiceDetail,
+} from "@/actions";
 import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
 import { ServiceTaskCard, type ServiceTaskItem } from "@/components/technician/service-task-card";
 import {
@@ -87,35 +87,30 @@ function formatDate(date: Date): string {
   }).format(new Date(date));
 }
 
-export function TechnicianOverview() {
+export function TechnicianOverview({ initialData }: { initialData?: TechnicianDashboardData }) {
   const [dashboardData, setDashboardData] = useState<TechnicianDashboardData | null>(
-    null
+    initialData || null
   );
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
   const [takingServiceId, setTakingServiceId] = useState<string | null>(null);
-  const [selectedService, setSelectedService] = useState<RecentService | null>(null);
+  const [selectedService, setSelectedService] = useState<ServiceListItem | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [selectedTaskService, setSelectedTaskService] = useState<TechnicianTaskService | null>(null);
+  const [selectedTaskService, setSelectedTaskService] = useState<ServiceDetail | null>(null);
   const [isTaskSheetOpen, setIsTaskSheetOpen] = useState(false);
 
   const fetchDashboardData = useCallback(async (silent = false) => {
-    // silent = true: background re-fetch after an optimistic mutation.
-    // Skip setIsLoading so the page stays mounted and optimistic state is preserved.
     if (!silent) setIsLoading(true);
     setError(null);
 
     try {
-      const result = await getTechnicianDashboardData();
+      const result = await getTechnicianDashboard();
       if (result.success && result.data) {
         setDashboardData(result.data);
 
-        // Keep selectedTaskService in sync with the fresh server data so
-        // the ServiceTaskCard inside the Sheet receives an up-to-date
-        // `task` prop after a silent re-fetch.
-        setSelectedTaskService((prev) => {
+        setSelectedTaskService((prev: ServiceDetail | null) => {
           if (!prev) return prev;
-          const fresh = result.data!.myTasks.find((t) => t.id === prev.id);
+          const fresh = result.data!.myTasks.find((t: ServiceDetail) => t.id === prev.id);
           return fresh ?? null;
         });
       } else {
@@ -130,14 +125,16 @@ export function TechnicianOverview() {
   }, []);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    if (!initialData) {
+      fetchDashboardData();
+    }
+  }, [fetchDashboardData, initialData]);
 
   // Handle taking a service
   const handleTakeService = async (serviceId: string) => {
     setTakingServiceId(serviceId);
     try {
-      const result = await technicianTakeService(serviceId);
+      const result = await takeService(serviceId);
       if (result.success) {
         // Silent re-fetch to sync with server
         fetchDashboardData(true);
@@ -152,10 +149,11 @@ export function TechnicianOverview() {
     }
   };
 
-  // Convert TechnicianTaskService to ServiceTaskItem for ServiceTaskCard
+  // Convert ServiceDetail to ServiceTaskItem for ServiceTaskCard
   const taskItems: ServiceTaskItem[] = useMemo(() => {
     return (dashboardData?.myTasks || []).map((task) => ({
       id: task.id,
+      tokoId: task.tokoId,
       customerName: task.customerName,
       noWa: task.noWa,
       complaint: task.complaint,
@@ -164,7 +162,11 @@ export function TechnicianOverview() {
       doneAt: task.doneAt,
       passwordPattern: task.passwordPattern,
       imei: task.imei,
-      hpCatalog: task.hpCatalog,
+      hpCatalog: {
+        id: task.hpCatalog.id,
+        modelName: task.hpCatalog.modelName,
+        brand: task.hpCatalog.brand,
+      },
       items: task.items,
       invoice: task.invoice,
     }));
@@ -212,7 +214,7 @@ export function TechnicianOverview() {
     }));
   }, [dashboardData?.myTasks]);
 
-  function handleOpenDetail(service: RecentService) {
+  function handleOpenDetail(service: ServiceListItem) {
     setSelectedService(service);
     setIsDetailDialogOpen(true);
   }
@@ -227,7 +229,7 @@ export function TechnicianOverview() {
     if (!selectedService) return;
     setTakingServiceId(selectedService.id);
     try {
-      const result = await technicianTakeService(selectedService.id);
+      const result = await takeService(selectedService.id);
       if (result.success) {
         setIsDetailDialogOpen(false);
         setSelectedService(null);
@@ -250,6 +252,7 @@ export function TechnicianOverview() {
     if (!selectedTaskService) return null;
     return {
       id: selectedTaskService.id,
+      tokoId: selectedTaskService.tokoId,
       customerName: selectedTaskService.customerName,
       noWa: selectedTaskService.noWa,
       complaint: selectedTaskService.complaint,
@@ -258,13 +261,17 @@ export function TechnicianOverview() {
       status: selectedTaskService.status,
       checkinAt: selectedTaskService.checkinAt,
       doneAt: selectedTaskService.doneAt,
-      hpCatalog: selectedTaskService.hpCatalog,
+      hpCatalog: {
+        id: selectedTaskService.hpCatalog.id,
+        modelName: selectedTaskService.hpCatalog.modelName,
+        brand: selectedTaskService.hpCatalog.brand,
+      },
       items: selectedTaskService.items,
       invoice: selectedTaskService.invoice,
     };
   }, [selectedTaskService]);
 
-  function handleOpenTaskDetail(service: TechnicianTaskService) {
+  function handleOpenTaskDetail(service: ServiceDetail) {
     setSelectedTaskService(service);
     setIsTaskSheetOpen(true);
   }
@@ -377,13 +384,9 @@ export function TechnicianOverview() {
         <CardContent>
           <ServiceTable
             services={availableServicesTableItems}
-            variant="active"
-            showInvoice={false}
-            showTechnician={false}
-            showCreatedBy={false}
+            preset="technicianAvailable"
             emptyMessage="No available services at the moment"
-            onMoreClick={(service) => {
-              // Find the original service from availableServices
+            onRowClick={(service) => {
               const originalService = availableServices.find(s => s.id === service.id);
               if (originalService) handleOpenDetail(originalService);
             }}
@@ -405,13 +408,9 @@ export function TechnicianOverview() {
         <CardContent>
           <ServiceTable
             services={myTasksTableItems}
-            variant="active"
-            showInvoice={true}
-            showTechnician={false}
-            showCreatedBy={false}
+            preset="technicianMyTasks"
             emptyMessage="No tasks assigned to you"
             onRowClick={(service) => {
-              // Find the original task from myTasks
               const originalTask = myTasks.find(t => t.id === service.id);
               if (originalTask) handleOpenTaskDetail(originalTask);
             }}
@@ -495,7 +494,7 @@ export function TechnicianOverview() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground">Created By</p>
-                  <p className="font-medium">{selectedService.createdBy.name}</p>
+                  <p className="font-medium">{selectedService.createdBy?.name ?? "Unknown"}</p>
                 </div>
               </div>
             </div>

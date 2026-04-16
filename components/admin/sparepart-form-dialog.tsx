@@ -19,7 +19,7 @@ import {
   type Sparepart,
   type SparepartWithCompatibilities,
 } from "@/actions/inventory";
-import { searchHpCatalogs, searchBrands, createHpCatalog } from "@/actions/staff";
+import { searchDevices, searchBrands, createDevice } from "@/actions";
 import { cn } from "@/lib/utils";
 import { RiCloseLine, RiAddLine } from "@remixicon/react";
 
@@ -170,7 +170,7 @@ export function SparepartFormDialog({
     setShowDropdown(true);
 
     const timeoutId = setTimeout(async () => {
-      const result = await searchHpCatalogs(deviceQuery);
+      const result = await searchDevices(deviceQuery);
       if (result.success && result.data) {
         // Filter out already selected devices
         const filtered = result.data.filter(
@@ -223,7 +223,7 @@ export function SparepartFormDialog({
       modelName = parts[0];
     }
 
-    const result = await createHpCatalog({
+    const result = await createDevice({
       brandName,
       modelName,
     });

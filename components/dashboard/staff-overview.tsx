@@ -21,8 +21,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import type { ServiceListItem, PaginatedResult } from "@/actions/staff";
-import { deleteService } from "@/actions/staff";
+import type { ServiceListItem, PaginatedResult } from "@/actions";
+import { deleteService } from "@/actions";
 import { ServicesForm } from "@/components/staff/services-form";
 import {
   AlertDialog,
@@ -172,12 +172,6 @@ export function StaffOverview({
       router.push(`?${params.toString()}`, { scroll: false });
     });
   };
-
-  // Refresh page after service creation/update
-  const handleServiceCreated = useCallback(() => {
-    setEditingService(null);
-    router.refresh();
-  }, [router]);
 
   // Handle delete service
   const handleDeleteService = useCallback(async () => {
@@ -353,8 +347,9 @@ export function StaffOverview({
             setEditingService(null);
           }
         }}
-        onSuccess={handleServiceCreated}
+        onSuccess={() => setEditingService(null)}
         editData={editingService}
+        tokoId={selectedToko?.id}
       />
 
       {/* Recent Services with Notifications */}
@@ -382,15 +377,13 @@ export function StaffOverview({
         <CardContent className="space-y-4">
           <ServiceTable
             services={filteredServices}
-            variant="active"
-            showInvoice={true}
-            showCreatedBy={true}
+            preset="staffActive"
             emptyMessage="No services found"
-            onEditClick={(service) => {
+            onEdit={(service) => {
               setEditingService(service);
               setShowAddService(true);
             }}
-            onDeleteClick={(service) => {
+            onDelete={(service) => {
               setDeletingService(service);
             }}
           />
