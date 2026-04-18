@@ -1,22 +1,27 @@
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import type { SessionUser } from "@/lib/auth-types";
 
-/**
- * Get the current session on the server side.
- * Returns the session object if authenticated, null otherwise.
- */
-export async function getSession() {
+export type { SessionUser } from "@/lib/auth-types";
+
+interface ExtendedSession {
+  user: SessionUser;
+  session: {
+    id: string;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}
+
+export async function getSession(): Promise<ExtendedSession | null> {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
-  return session;
+  return session as ExtendedSession | null;
 }
 
-/**
- * Get the current user from the session.
- * Returns the user object if authenticated, null otherwise.
- */
-export async function getUser() {
+export async function getUser(): Promise<SessionUser | null> {
   const session = await getSession();
   return session?.user ?? null;
 }

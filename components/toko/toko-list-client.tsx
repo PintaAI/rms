@@ -13,7 +13,6 @@ import {
   EmptyMedia,
 } from "@/components/ui/empty";
 import { RiAddLine, RiStore2Line } from "@remixicon/react";
-import { useToko } from "@/components/toko/toko-provider";
 import type { Toko } from "@/actions/toko";
 
 interface TokoListClientProps {
@@ -22,7 +21,6 @@ interface TokoListClientProps {
 
 export function TokoListClient({ tokoList }: TokoListClientProps) {
   const router = useRouter();
-  const { forceRefreshTokoList } = useToko();
   const [tokos, setTokos] = useState<Toko[]>(tokoList);
   const [selectedTokoId, setSelectedTokoId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -41,7 +39,6 @@ export function TokoListClient({ tokoList }: TokoListClientProps) {
 
   function handleTokoSuccess(toko?: Toko) {
     if (!toko) {
-      forceRefreshTokoList();
       router.refresh();
       return;
     }
@@ -62,14 +59,12 @@ export function TokoListClient({ tokoList }: TokoListClientProps) {
     pendingMutationsRef.current -= 1;
 
     if (!isTemp) {
-      forceRefreshTokoList();
       router.refresh();
     }
   }
 
   function handleTokoDelete(tokoId: string) {
     setTokos(prev => prev.filter(t => t.id !== tokoId));
-    forceRefreshTokoList();
     router.refresh();
   }
 

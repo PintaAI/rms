@@ -1,62 +1,17 @@
-import { AdminOverview } from "@/components/dashboard/admin-overview"
-import { getServiceList, getAdminDashboardStats } from "@/actions"
-import type { DashboardTimeFilter } from "@/actions"
-import { getAuthUser } from "@/lib/rbac"
-import { redirect } from "next/navigation"
+import { TokoListClient } from "@/components/toko/toko-list-client";
+import { getAllToko } from "@/actions/toko";
 
-type AdminPageSearchParams = {
-  filter?: DashboardTimeFilter
-  page?: string
-  tokoId?: string
-}
-
-interface AdminPageProps {
-  searchParams: Promise<AdminPageSearchParams>
-}
-
-export default async function AdminPage({ searchParams }: AdminPageProps) {
-  const user = await getAuthUser()
-
-  if (!user) {
-    redirect("/auth")
-  }
-
-  if (user.tokoIds.length === 0) {
-    redirect("/dashboard/admin/toko")
-  }
-
-  const params = await searchParams
-  const timeFilter: DashboardTimeFilter = params.filter || "daily"
-  const page = params.page ? parseInt(params.page, 10) : 1
-  const targetTokoId = params.tokoId && user.tokoIds.includes(params.tokoId) 
-    ? params.tokoId 
-    : user.tokoIds[0]
-
-  const serviceListFilter = timeFilter === "all" ? undefined : timeFilter
-
-  const [result, statsResult] = await Promise.all([
-    getServiceList(targetTokoId, serviceListFilter, page, 15),
-    getAdminDashboardStats(targetTokoId, timeFilter),
-  ])
-
-  const paginatedData = result.success && result.data ? result.data : { data: [], total: 0, page: 1, pageSize: 15, totalPages: 0 }
-
-  const dashboardStats = statsResult.success && statsResult.data ? statsResult.data : {
-    totalServices: 0,
-    receivedCount: 0,
-    repairingCount: 0,
-    doneCount: 0,
-    pickedUpCount: 0,
-    totalRevenue: 0,
-    unpaidInvoices: 0,
-  }
+export default async function KelolaTokoPage() {
+  const result = await getAllToko();
+  const tokoList = result.success && result.data ? result.data : [];
 
   return (
-    <AdminOverview
-      initialServices={paginatedData.data}
-      timeFilter={timeFilter}
-      pagination={paginatedData}
-      dashboardStats={dashboardStats}
-    />
-  )
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Pilih Toko</h1>
+        <p className="text-muted-foreground">Manage all your stores.</p>
+      </div>
+      <TokoListClient tokoList={tokoList} />
+    </div>
+  );
 }

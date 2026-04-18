@@ -23,24 +23,22 @@ import { RiStore2Line, RiArrowDownSLine, RiCheckLine, RiSettings4Line } from "@r
 
 export function SidebarHeaderComponent() {
   const { session } = useAuth();
-  const { selectedToko, tokoList, setSelectedToko, canSwitchToko, isLoading } = useToko();
+  const { selectedToko, tokoList, setSelectedToko, canSwitchToko } = useToko();
   const router = useRouter();
   
   if (!session) {
     return null;
   }
 
-  const role = (session.user as any).role || "staff";
+  const role = (session.user as { role?: string }).role || "staff";
 
   return (
     <SidebarHeader>
       <SidebarMenu>
         <SidebarMenuItem>
           {canSwitchToko && tokoList.length > 0 ? (
-            // Admin: Show toko selector dropdown
             <DropdownMenu>
               <DropdownMenuTrigger
-                disabled={isLoading}
                 render={
                   <SidebarMenuButton
                     size="lg"
@@ -59,7 +57,7 @@ export function SidebarHeaderComponent() {
                     </div>
                     <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                       <span className="font-semibold">
-                        {isLoading ? "Loading..." : selectedToko?.name || "Select Toko"}
+                        {selectedToko?.name || "Select Toko"}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {tokoList.length} toko available
@@ -80,7 +78,7 @@ export function SidebarHeaderComponent() {
                     <DropdownMenuItem
                       key={toko.id}
                       className="gap-3 p-3"
-                      onClick={() => setSelectedToko(toko)}
+                      onClick={() => router.push(`/dashboard/${toko.id}/admin`)}
                     >
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary overflow-hidden">
                         {toko.logoUrl ? (
@@ -121,10 +119,8 @@ export function SidebarHeaderComponent() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            // No toko assigned or non-switchable: Show dropdown with manage option
             <DropdownMenu>
               <DropdownMenuTrigger
-                disabled={isLoading}
                 render={
                   <SidebarMenuButton
                     size="lg"
@@ -143,7 +139,7 @@ export function SidebarHeaderComponent() {
                     </div>
                     <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
                       <span className="font-semibold">
-                        {isLoading ? "Loading..." : selectedToko?.name || "Belum ada toko"}
+                        {selectedToko?.name || "Belum ada toko"}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {role.charAt(0).toUpperCase() + role.slice(1)}

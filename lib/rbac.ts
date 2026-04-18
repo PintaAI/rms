@@ -1,5 +1,5 @@
-import prisma from "@/lib/prisma"
 import { getUser } from "@/lib/get-session"
+import prisma from "@/lib/prisma"
 import type { UserRole, SubscriptionPlan } from "@/lib/generated/prisma/enums"
 
 export type Role = UserRole
@@ -11,8 +11,19 @@ export interface AuthUser {
   email: string
   role: Role
   tokoIds: string[]
+  tokos: Array<{
+    id: string
+    name: string
+    address: string | null
+    phone: string | null
+    logoUrl: string | null
+    status: string
+  }>
   subscription?: {
+    id: string
     plan: Plan
+    createdAt: Date
+    updatedAt: Date
   } | null
 }
 
@@ -45,31 +56,14 @@ export async function getAuthUser(): Promise<AuthUser | null> {
   const sessionUser = await getUser()
   if (!sessionUser) return null
 
-  const user = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      tokoAssignments: {
-        select: { tokoId: true },
-      },
-      subscription: {
-        select: { plan: true },
-      },
-    },
-  })
-
-  if (!user) return null
-
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    tokoIds: user.tokoAssignments.map((a) => a.tokoId),
-    subscription: user.subscription,
+    id: sessionUser.id,
+    name: sessionUser.name,
+    email: sessionUser.email,
+    role: sessionUser.role as UserRole,
+    tokoIds: sessionUser.tokoIds ?? [],
+    tokos: sessionUser.tokos ?? [],
+    subscription: sessionUser.subscription ?? null,
   }
 }
 

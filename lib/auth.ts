@@ -42,15 +42,43 @@ export const auth = betterAuth({
       if (ctx.path === "/get-session" || ctx.path === "/session") {
         const returned = ctx.context.returned as { user?: { id: string } } | undefined;
         if (returned?.user) {
-          const subscription = await prisma.subscription.findUnique({
-            where: { userId: returned.user.id },
-            select: { plan: true },
-          });
+          const [subscription, tokoAssignments] = await Promise.all([
+            prisma.subscription.findUnique({
+              where: { userId: returned.user.id },
+              select: {
+                id: true,
+                plan: true,
+                createdAt: true,
+                updatedAt: true,
+              },
+            }),
+            prisma.userToko.findMany({
+              where: { userId: returned.user.id },
+              select: {
+                toko: {
+                  select: {
+                    id: true,
+                    name: true,
+                    address: true,
+                    phone: true,
+                    logoUrl: true,
+                    status: true,
+                  },
+                },
+              },
+            }),
+          ]);
+          
+          const tokos = tokoAssignments.map((a) => a.toko);
+          const tokoIds = tokos.map((t) => t.id);
+          
           return ctx.json({
             ...returned,
             user: {
               ...returned.user,
-              plan: subscription?.plan,
+              subscription,
+              tokos,
+              tokoIds,
             },
           });
         }

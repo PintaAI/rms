@@ -1,12 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useToko } from "@/components/toko/toko-provider";
+import { useState, useCallback } from "react";
 import {
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +30,8 @@ import {
 import {
   RiDeleteBinLine,
   RiMailLine,
-  RiStore2Line,
 } from "@remixicon/react";
 
-// Delete Confirmation Dialog
 interface DeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,13 +76,18 @@ function DeleteDialog({
   );
 }
 
-export default function KaryawanPage() {
-  const { selectedToko, isLoading: tokoLoading } = useToko();
-  const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+interface AdminKaryawanClientProps {
+  tokoId: string;
+  initialUsers: User[];
+}
+
+export function AdminKaryawanClient({
+  tokoId,
+  initialUsers,
+}: AdminKaryawanClientProps) {
+  const [users, setUsers] = useState<User[]>(initialUsers);
   const [error, setError] = useState<string | null>(null);
 
-  // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -96,36 +95,23 @@ export default function KaryawanPage() {
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  async function fetchData() {
-    if (!selectedToko) {
-      setUsers([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
+  const fetchData = useCallback(async () => {
     setError(null);
 
     try {
-      const result = await getUsersByToko(selectedToko.id);
+      const result = await getUsersByToko(tokoId);
       if (result.success && result.data) {
         setUsers([...result.data.staff, ...result.data.technicians]);
       } else {
         setError(result.error || "Failed to load users");
       }
-    } catch (err) {
-      console.error("Error fetching users:", err);
+    } catch {
+      console.error("Error fetching users:");
       setError("Failed to load users");
-    } finally {
-      setIsLoading(false);
     }
-  }
+  }, [tokoId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [selectedToko]);
-
-  async function handleDelete() {
+  const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
 
     setIsDeleting(true);
@@ -138,51 +124,24 @@ export default function KaryawanPage() {
       } else {
         setError(result.error || "Failed to remove user");
       }
-    } catch (err) {
+    } catch {
       setError("An error occurred");
     } finally {
       setIsDeleting(false);
     }
-  }
+  }, [deleteTarget, fetchData]);
 
-  function openDeleteDialog(id: string, name: string) {
+  const openDeleteDialog = (id: string, name: string) => {
     setDeleteTarget({ id, name });
     setDeleteDialogOpen(true);
-  }
-
-  // Loading state
-  if (tokoLoading || isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-          <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
-        </div>
-        <div className="h-64 bg-muted rounded animate-pulse" />
-      </div>
-    );
-  }
-
-  // No toko selected
-  if (!selectedToko) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <RiStore2Line className="h-16 w-16 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold">No Toko Selected</h2>
-        <p className="text-muted-foreground mt-2">
-          Please select a toko from the sidebar to manage employees.
-        </p>
-      </div>
-    );
-  }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">{selectedToko.name} Employees</h1>
+        <h1 className="text-2xl font-bold">Employees</h1>
         <p className="text-muted-foreground">
-          View and manage staff and technicians for this toko ({users.length})
+          View and manage staff and technicians ({users.length})
         </p>
       </div>
 
@@ -192,7 +151,6 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* Single Table */}
       <Card>
         <CardContent className="p-0">
           {users.length === 0 ? (
@@ -247,7 +205,6 @@ export default function KaryawanPage() {
         </CardContent>
       </Card>
 
-      {/* Delete Dialog */}
       <DeleteDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}

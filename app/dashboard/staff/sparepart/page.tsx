@@ -96,7 +96,7 @@ function DeleteDialog({
 }
 
 export default function StaffSparepartPage() {
-  const { selectedToko, isLoading: tokoLoading } = useToko();
+  const { selectedToko } = useToko();
   const [spareparts, setSpareparts] = useState<SparepartWithCompatibilities[]>(
     []
   );
@@ -176,7 +176,7 @@ export default function StaffSparepartPage() {
   }
 
   // Loading state
-  if (tokoLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div>

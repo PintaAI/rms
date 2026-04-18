@@ -189,7 +189,7 @@ export function AdminOverview({
   pagination,
   dashboardStats: initialDashboardStats,
 }: AdminOverviewProps) {
-  const { selectedToko, isLoading: tokoLoading } = useToko();
+  const { selectedToko } = useToko();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -226,23 +226,6 @@ export function AdminOverview({
     setTimeFilter(initialTimeFilter);
   }, [initialTimeFilter]);
 
-  // Sync selectedToko → URL so the server page fetches data for the right toko
-  const prevTokoId = typeof window !== "undefined"
-    ? searchParams.get("tokoId")
-    : null;
-  useEffect(() => {
-    if (!selectedToko) return;
-    if (selectedToko.id === prevTokoId) return;
-    startTransition(() => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("tokoId", selectedToko.id);
-      params.set("page", "1"); // reset to page 1 on toko switch
-      router.push(`?${params.toString()}`, { scroll: false });
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedToko?.id]);
-
-  // Technician assignment dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<{
     id: string;
@@ -371,18 +354,7 @@ export function AdminOverview({
       title: "No Services Yet",
       message: "Click 'New Service' to add your first service request",
     });
-  }
-
-  // Loading state
-  if (tokoLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <h2 className="text-xl font-semibold">Loading toko data...</h2>
-        <p className="text-sm text-muted-foreground mt-2">Fetching your store information</p>
-      </div>
-    );
-  }
+}
 
   // No toko selected
   if (!selectedToko) {

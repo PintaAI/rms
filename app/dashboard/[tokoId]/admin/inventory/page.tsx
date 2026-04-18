@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { getAuthUser } from "@/lib/rbac";
 import { getSpareparts, getServicePricelists, type SparepartWithCompatibilities } from "@/actions/inventory";
 import { InventoryOverview } from "@/components/admin/inventory-overview";
@@ -10,24 +10,21 @@ interface InventoryPricelist {
 }
 
 interface InventoryPageProps {
-  searchParams: Promise<{ tokoId?: string }>;
+  params: Promise<{ tokoId: string }>;
 }
 
-export default async function AdminInventoryPage({ searchParams }: InventoryPageProps) {
+export default async function AdminInventoryPage({ params }: InventoryPageProps) {
   const user = await getAuthUser();
 
   if (!user) {
     redirect("/auth");
   }
 
-  if (user.tokoIds.length === 0) {
-    redirect("/auth");
-  }
+  const { tokoId } = await params;
 
-  const params = await searchParams;
-  const tokoId = params.tokoId && user.tokoIds.includes(params.tokoId)
-    ? params.tokoId
-    : user.tokoIds[0];
+  if (!user.tokoIds.includes(tokoId)) {
+    notFound();
+  }
 
   const prisma = (await import("@/lib/prisma")).default;
   const toko = await prisma.toko.findUnique({

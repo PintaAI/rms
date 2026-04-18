@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
   CardHeader,
@@ -11,14 +10,13 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ServiceTable, type ServiceTableItem } from "@/components/dashboard/service-table";
+import { ServiceTable } from "@/components/dashboard/service-table";
 import {
   getServiceList,
   deleteService,
   getService,
-  type ServiceListItem,
 } from "@/actions";
-import type { ServiceTableItem as ServiceTableItemType } from "@/components/dashboard/service-table/types";
+import type { ServiceTableItem } from "@/components/dashboard/service-table/types";
 import { ServicesForm } from "@/components/staff/services-form";
 import {
   AlertDialog,
@@ -41,164 +39,122 @@ import {
   RiRefreshLine,
   RiTimeLine,
   RiPlayCircleLine,
-  RiStore2Line,
   RiToolsLine,
 } from "@remixicon/react";
 
-export default function AdminServicesPage() {
-  const { selectedToko, isLoading: tokoLoading } = useToko();
+export type { ServiceTableItem } from "@/components/dashboard/service-table/types";
+
+interface AdminServicesClientProps {
+  tokoId: string;
+  initialServices: ServiceTableItem[];
+  initialStats: { received: number; repairing: number };
+  initialFilter: "received" | "repairing";
+}
+
+export function AdminServicesClient({
+  tokoId,
+  initialServices,
+  initialStats,
+  initialFilter,
+}: AdminServicesClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const [services, setServices] = useState<ServiceTableItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [services, setServices] = useState<ServiceTableItem[]>(initialServices);
+  const [isLoading, setIsLoading] = useState(false);
+  const [stats, setStats] = useState(initialStats);
+  const [filter, setFilter] = useState<"received" | "repairing">(initialFilter);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [filter, setFilter] = useState<string>(() => {
-    const statusParam = searchParams.get("status");
-    if (statusParam === "received" || statusParam === "repairing") {
-      return statusParam;
-    }
-    return "received";
-  });
   const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
-
-  // Delete state
   const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Technician task detail sheet state
   const [taskSheetOpen, setTaskSheetOpen] = useState(false);
   const [selectedTaskDetail, setSelectedTaskDetail] = useState<ServiceTaskItem | null>(null);
   const [isLoadingTaskDetail, setIsLoadingTaskDetail] = useState(false);
   
-  // Track pending mutations to prevent fetchData from being called after optimistic update
   const pendingMutationsRef = useRef(0);
 
   const fetchData = useCallback(async (silent = false) => {
-    if (!selectedToko) {
-      setError("No toko selected");
-      setIsLoading(false);
-      return;
-    }
-
     if (!silent) setIsLoading(true);
-    setError(null);
     try {
-      const result = await getServiceList(selectedToko.id, undefined, 1, 200);
+      const result = await getServiceList(tokoId, undefined, 1, 200, ["received", "repairing"]);
       if (result.success && result.data) {
-        const activeServices = result.data.data.filter(
-          (s: ServiceListItem) => s.status === "received" || s.status === "repairing"
-        ) as ServiceTableItem[];
-        setServices(activeServices);
-      } else {
-        setError(result.error || "Failed to load data");
+        const allData = result.data.data as ServiceTableItem[];
+        setServices(allData.filter((s) => s.status === filter));
+        setStats({
+          received: allData.filter((s) => s.status === "received").length,
+          repairing: allData.filter((s) => s.status === "repairing").length,
+        });
       }
     } catch (err) {
       console.error("Error fetching data:", err);
-      setError("Failed to load data");
     } finally {
       if (!silent) setIsLoading(false);
     }
-  }, [selectedToko]);
+  }, [tokoId, filter]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // Sync filter with URL param changes
-  useEffect(() => {
-    const statusParam = searchParams.get("status");
-    if (statusParam === "received" || statusParam === "repairing") {
-      setFilter(statusParam);
-    } else {
-      setFilter("received");
-    }
-  }, [searchParams]);
-
-  // Filter services by status
-  const filteredServices = services.filter((service) => {
-    if (filter === "all") return true;
-    return service.status === filter;
-  });
-
-  // Calculate stats for active services
-  const stats = {
-    received: services.filter((s) => s.status === "received").length,
-    repairing: services.filter((s) => s.status === "repairing").length,
-  };
-
-  const handleFilterChange = useCallback((newFilter: string) => {
+  const handleFilterChange = useCallback((newFilter: "received" | "repairing") => {
     setFilter(newFilter);
+    setServices((prev) => prev.filter((s) => s.status === newFilter));
     const params = new URLSearchParams(searchParams.toString());
     params.set("status", newFilter);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [searchParams, router, pathname]);
 
-  // Handle edit
   const handleEditClick = (service: ServiceTableItem) => {
     setEditingService(service);
     setDialogOpen(true);
   };
 
-  // Handle service created/updated - don't refetch, optimistic state is already correct
   const handleServiceCreated = useCallback(() => {
     setEditingService(null);
-    // Don't call fetchData - optimistic state is already correct
   }, []);
 
-  // Handle delete
   const handleDeleteService = useCallback(async () => {
     if (!deletingService) return;
 
     const serviceId = deletingService.id;
     setIsDeleting(true);
-    
-    // Track pending mutation
     pendingMutationsRef.current += 1;
     
-    // Optimistic update - remove from local state immediately
-    setServices(prev => prev.filter(s => s.id !== serviceId));
+    setServices((prev) => prev.filter((s) => s.id !== serviceId));
     setDeletingService(null);
 
     const result = await deleteService(serviceId);
     setIsDeleting(false);
 
     if (!result.success) {
-      // Revert on failure - decrement counter and refetch
       pendingMutationsRef.current -= 1;
       console.error("Failed to delete service:", result.error);
       fetchData();
     }
   }, [deletingService, fetchData]);
 
-  // Handle optimistic create - add service immediately to local state
-  const handleOptimisticCreate = useCallback((tempService: ServiceTableItemType) => {
+  const handleOptimisticCreate = useCallback((tempService: ServiceTableItem) => {
     pendingMutationsRef.current += 1;
-    setServices(prev => [tempService, ...prev]);
+    setServices((prev) => [tempService, ...prev]);
+    setStats((prev) => ({
+      ...prev,
+      received: tempService.status === "received" ? prev.received + 1 : prev.received,
+      repairing: tempService.status === "repairing" ? prev.repairing + 1 : prev.repairing,
+    }));
   }, []);
 
-  // Handle optimistic update - update service immediately in local state
-  const handleOptimisticUpdate = useCallback((updatedService: ServiceTableItemType) => {
+  const handleOptimisticUpdate = useCallback((updatedService: ServiceTableItem) => {
     pendingMutationsRef.current += 1;
-    setServices(prev => prev.map(s => 
-      s.id === updatedService.id ? updatedService : s
-    ));
+    setServices((prev) => prev.map((s) => s.id === updatedService.id ? updatedService : s));
   }, []);
 
-  // Handle revert create - remove temp service on failure
   const handleRevertCreate = useCallback((tempId: string) => {
     pendingMutationsRef.current -= 1;
-    setServices(prev => prev.filter(s => s.id !== tempId));
+    setServices((prev) => prev.filter((s) => s.id !== tempId));
     fetchData(true);
   }, [fetchData]);
 
-  // Handle technician assignment change
   const handleAssignmentChange = () => {
-    fetchData(true); // silent reload
+    fetchData(true);
   };
 
-  // Handle row click - open task detail sheet
   const handleRowClick = async (service: ServiceTableItem) => {
     setIsLoadingTaskDetail(true);
     setTaskSheetOpen(true);
@@ -219,54 +175,11 @@ export default function AdminServicesPage() {
     }
   };
 
-  // Loading state
-  if (isLoading || tokoLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <h2 className="text-xl font-semibold">
-          {tokoLoading ? "Loading toko data..." : "Loading services..."}
-        </h2>
-        <p className="text-sm text-muted-foreground mt-2">
-          {tokoLoading ? "Fetching your store information" : "Fetching service list"}
-        </p>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  // No toko selected (after loading complete)
-  if (!selectedToko) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <RiStore2Line className="h-16 w-16 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold">No Toko Selected</h2>
-        <p className="text-muted-foreground mt-2">
-          Please select a toko from the sidebar to manage services.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Manage Services</h1>
-          <p className="text-muted-foreground">
-            Manage active services at {selectedToko.name}
-          </p>
         </div>
         <Button onClick={() => { setEditingService(null); setDialogOpen(true); }}>
           <RiAddLine className="h-4 w-4 mr-2" />
@@ -274,24 +187,20 @@ export default function AdminServicesPage() {
         </Button>
       </div>
 
-      {/* Add/Edit Service Dialog */}
       <ServicesForm
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
-          if (!open) {
-            setEditingService(null);
-          }
+          if (!open) setEditingService(null);
         }}
         onSuccess={handleServiceCreated}
         editData={editingService}
-        tokoId={selectedToko?.id}
+        tokoId={tokoId}
         onOptimisticCreate={handleOptimisticCreate}
         onOptimisticUpdate={handleOptimisticUpdate}
         onRevertCreate={handleRevertCreate}
       />
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -323,7 +232,6 @@ export default function AdminServicesPage() {
         </Card>
       </div>
 
-      {/* Filter */}
       <div className="flex gap-2">
         <Button
           variant={filter === "received" ? "default" : "outline"}
@@ -355,13 +263,12 @@ export default function AdminServicesPage() {
         </Button>
       </div>
 
-      {/* Active Services */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Active Services</CardTitle>
             <CardDescription>
-              {filteredServices.length} service(s) at {selectedToko.name}
+              {services.length} service(s)
             </CardDescription>
           </div>
           <Button
@@ -375,19 +282,18 @@ export default function AdminServicesPage() {
         </CardHeader>
         <CardContent>
           <ServiceTable
-            services={filteredServices}
+            services={services}
             preset="adminActive"
             emptyMessage="No active services found"
             onEdit={handleEditClick}
             onDelete={(service) => setDeletingService(service)}
             onAssignTech={handleAssignmentChange}
-            tokoId={selectedToko?.id}
+            tokoId={tokoId}
             onRowClick={handleRowClick}
           />
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deletingService} onOpenChange={(open) => !open && setDeletingService(null)}>
         <AlertDialogContent>
           <AlertDialogTitle>Delete Service</AlertDialogTitle>
@@ -404,7 +310,6 @@ export default function AdminServicesPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Technician Task Detail Sheet */}
       <Sheet open={taskSheetOpen} onOpenChange={setTaskSheetOpen}>
         <SheetContent side="bottom" className="rounded-t-4xl h-[85vh] sm:max-w-2xl mx-auto overflow-y-auto">
           <SheetHeader>

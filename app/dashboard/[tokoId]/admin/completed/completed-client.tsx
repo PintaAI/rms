@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { useToko } from "@/components/toko/toko-provider";
+import { useState, useCallback } from "react";
 import {
   Card,
   CardHeader,
@@ -29,17 +28,26 @@ import {
   getPickedUpServices,
   pickupService,
   payInvoice,
-  type ServiceListItem,
 } from "@/actions";
-import { RiRefreshLine, RiHistoryLine, RiStore2Line } from "@remixicon/react";
+import { RiRefreshLine, RiHistoryLine } from "@remixicon/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export default function AdminCompletedPage() {
-  const { selectedToko, isLoading: tokoLoading } = useToko();
-  const [services, setServices] = useState<ServiceListItem[]>([]);
-  const [historyServices, setHistoryServices] = useState<ServiceListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export type { ServiceTableItem } from "@/components/dashboard/service-table/types";
+
+interface AdminCompletedClientProps {
+  tokoId: string;
+  initialServices: ServiceTableItem[];
+  initialHistory: ServiceTableItem[];
+}
+
+export function AdminCompletedClient({
+  tokoId,
+  initialServices,
+  initialHistory,
+}: AdminCompletedClientProps) {
+  const [services, setServices] = useState<ServiceTableItem[]>(initialServices);
+  const [historyServices, setHistoryServices] = useState<ServiceTableItem[]>(initialHistory);
+  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"ready" | "history">("ready");
 
   const [isPickupDialogOpen, setIsPickupDialogOpen] = useState(false);
@@ -49,57 +57,29 @@ export default function AdminCompletedPage() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!selectedToko) {
-      setError("No toko selected");
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
-    setError(null);
     try {
-      const result = await getCompletedServices(selectedToko.id);
+      const result = await getCompletedServices(tokoId);
       if (result.success && result.data) {
-        setServices(result.data);
-      } else {
-        setError(result.error || "Failed to load data");
+        setServices(result.data as ServiceTableItem[]);
       }
     } catch (err) {
       console.error("Error fetching data:", err);
-      setError("Failed to load data");
     } finally {
       setIsLoading(false);
     }
-  }, [selectedToko]);
+  }, [tokoId]);
 
   const fetchHistoryData = useCallback(async () => {
-    if (!selectedToko) {
-      setError("No toko selected");
-      return;
-    }
-
     try {
-      const result = await getPickedUpServices(selectedToko.id);
+      const result = await getPickedUpServices(tokoId);
       if (result.success && result.data) {
-        setHistoryServices(result.data);
-      } else {
-        setError(result.error || "Failed to load history data");
+        setHistoryServices(result.data as ServiceTableItem[]);
       }
     } catch (err) {
       console.error("Error fetching history data:", err);
-      setError("Failed to load history data");
     }
-  }, [selectedToko]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (activeTab === "history") {
-      fetchHistoryData();
-    }
-  }, [activeTab, fetchHistoryData]);
+  }, [tokoId]);
 
   const handleCallClick = (phone: string) => {
     const cleaned = phone.replace(/\D/g, "");
@@ -129,6 +109,7 @@ export default function AdminCompletedPage() {
       const result = await pickupService(selectedServiceId);
       if (result.success) {
         fetchData();
+        fetchHistoryData();
         setIsPickupDialogOpen(false);
         setSelectedServiceId(null);
       } else {
@@ -163,50 +144,11 @@ export default function AdminCompletedPage() {
     }
   };
 
-  if (isLoading || tokoLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <h2 className="text-xl font-semibold">
-          {tokoLoading ? "Loading toko data..." : "Loading completed services..."}
-        </h2>
-        <p className="text-sm text-muted-foreground mt-2">
-          {tokoLoading ? "Fetching your store information" : "Fetching completed service list"}
-        </p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto py-6">
-        <div className="bg-destructive/10 text-destructive p-4 rounded-lg">
-          {error}
-        </div>
-      </div>
-    );
-  }
-
-  if (!selectedToko) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
-        <RiStore2Line className="h-16 w-16 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold">No Toko Selected</h2>
-        <p className="text-muted-foreground mt-2">
-          Please select a toko from the sidebar to view completed services.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold">Completed Services</h1>
-          <p className="text-muted-foreground">
-            Track completed and picked up services at {selectedToko.name}
-          </p>
         </div>
         <Button
           variant="outline"
@@ -237,7 +179,7 @@ export default function AdminCompletedPage() {
             </CardHeader>
             <CardContent>
               <ServiceTable
-                services={services as ServiceTableItem[]}
+                services={services}
                 preset="completed"
                 onMarkPaid={handleMarkPaidClick}
                 onCall={handleCallClick}
@@ -258,7 +200,7 @@ export default function AdminCompletedPage() {
             </CardHeader>
             <CardContent>
               <ServiceTable
-                services={historyServices as ServiceTableItem[]}
+                services={historyServices}
                 preset="history"
                 emptyMessage="No picked up services in history"
               />

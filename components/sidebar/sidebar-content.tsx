@@ -23,7 +23,6 @@ import {
   RiCheckboxCircleLine,
   RiInboxArchiveLine,
   RiToolsFill,
-  RiPhoneFill,
   RiSmartphoneLine,
 } from "@remixicon/react";
 import Link from "next/link";
@@ -47,34 +46,33 @@ export type SidebarConfig = {
   items: SidebarMenuItemConfig[];
 };
 
-export const sidebarConfigs: Record<string, SidebarConfig> = {
-  admin: {
+export const sidebarConfigs: Record<string, (tokoId?: string) => SidebarConfig> = {
+  admin: (tokoId) => ({
     groupLabel: "Admin Menu",
     items: [
       {
         title: "Dashboard",
-        href: "/dashboard/admin",
+        href: tokoId ? `/dashboard/${tokoId}/admin` : "/dashboard/admin",
         icon: RiDashboardLine,
       },
       {
         title: "Services",
-        href: "/dashboard/admin/services",
+        href: tokoId ? `/dashboard/${tokoId}/admin/services` : "/dashboard/admin/services",
         icon: RiSmartphoneLine,
         children: [
-                    {
+          {
             title: "Masuk",
-            href: "/dashboard/admin/services?status=received",
-            icon: RiInboxArchiveLine
+            href: tokoId ? `/dashboard/${tokoId}/admin/services?status=received` : "/dashboard/admin/services?status=received",
+            icon: RiInboxArchiveLine,
           },
           {
             title: "Sedang Diperbaiki",
-            href: "/dashboard/admin/services?status=repairing",
-            icon:  RiToolsFill,
+            href: tokoId ? `/dashboard/${tokoId}/admin/services?status=repairing` : "/dashboard/admin/services?status=repairing",
+            icon: RiToolsFill,
           },
-
           {
             title: "Selesai",
-            href: "/dashboard/admin/completed",
+            href: tokoId ? `/dashboard/${tokoId}/admin/completed` : "/dashboard/admin/completed",
             icon: RiCheckboxCircleLine,
             badge: { key: "completed" },
           },
@@ -87,19 +85,19 @@ export const sidebarConfigs: Record<string, SidebarConfig> = {
         children: [
           {
             title: "Staff & Teknisi",
-            href: "/dashboard/admin/karyawan",
+            href: tokoId ? `/dashboard/${tokoId}/admin/karyawan` : "/dashboard/admin/karyawan",
             icon: RiTeamLine,
           },
           {
             title: "Sparepart & Jasa",
-            href: "/dashboard/admin/inventory",
+            href: tokoId ? `/dashboard/${tokoId}/admin/inventory` : "/dashboard/admin/inventory",
             icon: RiToolsLine,
           },
         ],
       },
     ],
-  },
-  staff: {
+  }),
+  staff: () => ({
     groupLabel: "Staff Menu",
     items: [
       {
@@ -124,8 +122,8 @@ export const sidebarConfigs: Record<string, SidebarConfig> = {
         icon: RiToolsLine,
       },
     ],
-  },
-  technician: {
+  }),
+  technician: () => ({
     groupLabel: "Technician Menu",
     items: [
       {
@@ -139,7 +137,7 @@ export const sidebarConfigs: Record<string, SidebarConfig> = {
         icon: RiToolsLine,
       },
     ],
-  },
+  }),
 };
 
 export function RoleSidebarContent() {
@@ -175,8 +173,9 @@ export function RoleSidebarContent() {
     return null;
   }
 
-  const role = (session.user as any).role || "staff";
-  const config = sidebarConfigs[role] || sidebarConfigs.staff;
+  const role = (session.user as { role?: string }).role || "staff";
+  const getConfig = sidebarConfigs[role] || sidebarConfigs.staff;
+  const config = getConfig(selectedToko?.id);
 
   const isActiveUrl = (href: string) => {
     const [urlPath, urlQuery] = href.split("?");
