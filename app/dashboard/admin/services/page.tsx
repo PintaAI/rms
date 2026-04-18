@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { useToko } from "@/components/toko/toko-provider";
 import {
   Card,
@@ -45,12 +46,21 @@ import {
 } from "@remixicon/react";
 
 export default function AdminServicesPage() {
-  const { selectedToko } = useToko();
+  const { selectedToko, isLoading: tokoLoading } = useToko();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [services, setServices] = useState<ServiceTableItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [filter, setFilter] = useState<string>("all");
+  const [filter, setFilter] = useState<string>(() => {
+    const statusParam = searchParams.get("status");
+    if (statusParam === "received" || statusParam === "repairing") {
+      return statusParam;
+    }
+    return "received";
+  });
   const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
 
   // Delete state
@@ -96,6 +106,16 @@ export default function AdminServicesPage() {
     fetchData();
   }, [fetchData]);
 
+  // Sync filter with URL param changes
+  useEffect(() => {
+    const statusParam = searchParams.get("status");
+    if (statusParam === "received" || statusParam === "repairing") {
+      setFilter(statusParam);
+    } else {
+      setFilter("received");
+    }
+  }, [searchParams]);
+
   // Filter services by status
   const filteredServices = services.filter((service) => {
     if (filter === "all") return true;
@@ -107,6 +127,13 @@ export default function AdminServicesPage() {
     received: services.filter((s) => s.status === "received").length,
     repairing: services.filter((s) => s.status === "repairing").length,
   };
+
+  const handleFilterChange = useCallback((newFilter: string) => {
+    setFilter(newFilter);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("status", newFilter);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, router, pathname]);
 
   // Handle edit
   const handleEditClick = (service: ServiceTableItem) => {
@@ -193,20 +220,16 @@ export default function AdminServicesPage() {
   };
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || tokoLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-            <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
-          </div>
-        </div>
-        <Card>
-          <CardContent className="py-10">
-            <div className="text-center text-muted-foreground">Loading services...</div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-semibold">
+          {tokoLoading ? "Loading toko data..." : "Loading services..."}
+        </h2>
+        <p className="text-sm text-muted-foreground mt-2">
+          {tokoLoading ? "Fetching your store information" : "Fetching service list"}
+        </p>
       </div>
     );
   }
@@ -222,7 +245,7 @@ export default function AdminServicesPage() {
     );
   }
 
-  // No toko selected
+  // No toko selected (after loading complete)
   if (!selectedToko) {
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] text-center">
@@ -303,25 +326,32 @@ export default function AdminServicesPage() {
       {/* Filter */}
       <div className="flex gap-2">
         <Button
-          variant={filter === "all" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setFilter("all")}
-        >
-          Semua ({services.length})
-        </Button>
-        <Button
           variant={filter === "received" ? "default" : "outline"}
           size="sm"
-          onClick={() => setFilter("received")}
+          onClick={() => handleFilterChange("received")}
+          className="relative"
         >
-          Masuk ({stats.received})
+          <RiTimeLine className="h-4 w-4" />
+          Masuk
+          {stats.received > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white tabular-nums">
+              {stats.received}
+            </span>
+          )}
         </Button>
         <Button
           variant={filter === "repairing" ? "default" : "outline"}
           size="sm"
-          onClick={() => setFilter("repairing")}
+          onClick={() => handleFilterChange("repairing")}
+          className="relative"
         >
-          Sedang di service ({stats.repairing})
+          <RiPlayCircleLine className="h-4 w-4" />
+          Sedang di service
+          {stats.repairing > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white tabular-nums">
+              {stats.repairing}
+            </span>
+          )}
         </Button>
       </div>
 

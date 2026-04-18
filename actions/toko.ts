@@ -184,27 +184,46 @@ export async function deleteToko(id: string): Promise<ActionResult> {
       where: { id },
       select: {
         id: true,
-        userAssignments: { select: { userId: true }, take: 1 },
-        services: { select: { id: true }, take: 1 },
-        spareparts: { select: { id: true }, take: 1 },
+        services: {
+          select: {
+            id: true,
+            items: { select: { id: true } },
+            invoice: { select: { id: true } },
+            logs: { select: { id: true } },
+            notifications: { select: { id: true } },
+          },
+        },
+        spareparts: {
+          select: {
+            id: true,
+            compatibilities: { select: { hpCatalogId: true } },
+            serviceItems: { select: { id: true } },
+          },
+        },
+        servicePricelists: { select: { id: true } },
+        userAssignments: { select: { userId: true } },
       },
     })
 
     if (!existingToko) return notFound("Toko")
 
     if (existingToko.userAssignments.length > 1) {
-      return forbidden("Cannot delete toko with other assigned users")
-    }
-
-    if (existingToko.services.length > 0) {
-      return forbidden("Cannot delete toko with service records")
-    }
-
-    if (existingToko.spareparts.length > 0) {
-      return forbidden("Cannot delete toko with spareparts")
+      return forbidden("Cannot delete toko with other assigned users. Remove them first.")
     }
 
     await prisma.$transaction([
+      prisma.notificationLog.deleteMany({ where: { service: { tokoId: id } } }),
+      prisma.serviceLog.deleteMany({ where: { service: { tokoId: id } } }),
+      prisma.invoice.deleteMany({ where: { service: { tokoId: id } } }),
+      prisma.serviceItem.deleteMany({ where: { service: { tokoId: id } } }),
+      prisma.service.deleteMany({ where: { tokoId: id } }),
+      
+      prisma.sparepartCompatibility.deleteMany({ where: { sparepart: { tokoId: id } } }),
+      prisma.serviceItem.deleteMany({ where: { sparepart: { tokoId: id } } }),
+      prisma.sparepart.deleteMany({ where: { tokoId: id } }),
+      
+      prisma.servicePricelist.deleteMany({ where: { tokoId: id } }),
+      
       prisma.userToko.deleteMany({ where: { tokoId: id } }),
       prisma.toko.delete({ where: { id } }),
     ])

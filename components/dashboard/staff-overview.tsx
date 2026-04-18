@@ -1,6 +1,22 @@
 "use client";
 
-import { useCallback, useState, useTransition } from "react";
+/**
+ * StaffOverview - Staff dashboard with optimistic UI updates
+ *
+ * OPTIMISTIC UI ARCHITECTURE (follows dev-docs/optimistic-ui-guide.md):
+ *
+ * 1. Local state - `services` holds optimistic copy, synced from `initialServices`
+ * 2. Mutation guard - `pendingMutationsRef` blocks sync during mutations
+ * 3. Refs for latest values - `servicesRef` for async callbacks
+ * 4. Fingerprint - Stable identity for `initialServices` prop
+ *
+ * MUTATION LIFECYCLE:
+ * - Before: pendingMutationsRef += 1, apply optimistic update
+ * - Success: pendingMutationsRef -= 1, router.refresh() (silent re-fetch)
+ * - Failure: pendingMutationsRef -= 1, router.refresh() to revert
+ */
+
+import { useCallback, useState, useTransition, useRef, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToko } from "@/components/toko/toko-provider";
 import {
@@ -151,7 +167,7 @@ export function StaffOverview({
   timeFilter: initialTimeFilter,
   pagination,
 }: StaffOverviewProps) {
-  const { selectedToko } = useToko();
+  const { selectedToko, isLoading: tokoLoading } = useToko();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -159,9 +175,31 @@ export function StaffOverview({
   const [editingService, setEditingService] = useState<ServiceTableItem | null>(null);
   const [deletingService, setDeletingService] = useState<ServiceTableItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [services, setServices] = useState<ServiceListItem[]>(initialServices);
   const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly">(
     initialTimeFilter
   );
+
+  const pendingMutationsRef = useRef(0);
+
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
+
+  const servicesFingerprint = useMemo(
+    () => JSON.stringify(initialServices.map(s => s.id)),
+    [initialServices]
+  );
+
+  useEffect(() => {
+    if (pendingMutationsRef.current === 0) {
+      setServices(initialServices);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicesFingerprint]);
+
+  useEffect(() => {
+    setTimeFilter(initialTimeFilter);
+  }, [initialTimeFilter]);
 
   // Handle time filter change - updates URL and triggers server refetch
   const handleTimeFilterChange = (newFilter: "daily" | "weekly" | "monthly") => {
@@ -176,21 +214,56 @@ export function StaffOverview({
   // Handle delete service
   const handleDeleteService = useCallback(async () => {
     if (!deletingService) return;
-    
+
+    const serviceId = deletingService.id;
+    const snapshot = servicesRef.current;
+
+    pendingMutationsRef.current += 1;
+
+    setServices(prev => prev.filter(s => s.id !== serviceId));
+    setDeletingService(null);
+
     setIsDeleting(true);
-    const result = await deleteService(deletingService.id);
+    const result = await deleteService(serviceId);
     setIsDeleting(false);
-    
+
     if (result.success) {
-      setDeletingService(null);
+      pendingMutationsRef.current -= 1;
       router.refresh();
     } else {
-      // Could add toast notification here for error
+      pendingMutationsRef.current -= 1;
+      setServices(snapshot);
       console.error("Failed to delete service:", result.error);
     }
   }, [deletingService, router]);
 
+  const handleOptimisticCreate = useCallback((tempService: ServiceListItem) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => [tempService, ...prev]);
+  }, []);
+
+  const handleOptimisticUpdate = useCallback((updatedService: ServiceListItem) => {
+    pendingMutationsRef.current += 1;
+    setServices(prev => prev.map(s =>
+      s.id === updatedService.id ? updatedService : s
+    ));
+  }, []);
+
+  const handleRevertCreate = useCallback((tempId: string) => {
+    pendingMutationsRef.current -= 1;
+    setServices(prev => prev.filter(s => s.id !== tempId));
+  }, []);
+
+  const handleRevertUpdate = useCallback((originalService: ServiceListItem) => {
+    pendingMutationsRef.current -= 1;
+    setServices(prev => prev.map(s =>
+      s.id === originalService.id ? originalService : s
+    ));
+  }, []);
+
   // Handle page change
+  const filteredServices = services;
+
   const handlePageChange = (newPage: number) => {
     startTransition(() => {
       const params = new URLSearchParams(searchParams.toString());
@@ -200,10 +273,6 @@ export function StaffOverview({
     });
   };
 
-  // Data is fetched server-side and passed as props
-  const filteredServices = initialServices;
-
-  // Calculate stats based on filtered services
   const stats = {
     total: filteredServices.length,
     received: filteredServices.filter((s) => s.status === "received").length,
@@ -237,7 +306,18 @@ export function StaffOverview({
     });
   }
 
-  // No toko selected
+  // Loading state
+  if (tokoLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-semibold">Loading toko data...</h2>
+        <p className="text-sm text-muted-foreground mt-2">Fetching your store information</p>
+      </div>
+    );
+  }
+
+  // No toko selected (after loading complete)
   if (!selectedToko) {
     return (
       <div className="flex flex-col items-center justify-center h-[50vh] text-center">
@@ -347,9 +427,17 @@ export function StaffOverview({
             setEditingService(null);
           }
         }}
-        onSuccess={() => setEditingService(null)}
+        onSuccess={() => {
+          setEditingService(null);
+          pendingMutationsRef.current -= 1;
+          router.refresh();
+        }}
         editData={editingService}
         tokoId={selectedToko?.id}
+        onOptimisticCreate={handleOptimisticCreate}
+        onOptimisticUpdate={handleOptimisticUpdate}
+        onRevertCreate={handleRevertCreate}
+        onRevertUpdate={handleRevertUpdate}
       />
 
       {/* Recent Services with Notifications */}

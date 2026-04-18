@@ -35,7 +35,7 @@ import { RiRefreshLine, RiHistoryLine, RiStore2Line } from "@remixicon/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function AdminCompletedPage() {
-  const { selectedToko } = useToko();
+  const { selectedToko, isLoading: tokoLoading } = useToko();
   const [services, setServices] = useState<ServiceListItem[]>([]);
   const [historyServices, setHistoryServices] = useState<ServiceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -163,20 +163,16 @@ export default function AdminCompletedPage() {
     }
   };
 
-  if (isLoading) {
+  if (isLoading || tokoLoading) {
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="h-8 w-48 bg-muted rounded animate-pulse" />
-            <div className="h-4 w-64 bg-muted rounded animate-pulse mt-2" />
-          </div>
-        </div>
-        <Card>
-          <CardContent className="py-10">
-            <div className="text-center text-muted-foreground">Loading completed services...</div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-semibold">
+          {tokoLoading ? "Loading toko data..." : "Loading completed services..."}
+        </h2>
+        <p className="text-sm text-muted-foreground mt-2">
+          {tokoLoading ? "Fetching your store information" : "Fetching completed service list"}
+        </p>
       </div>
     );
   }

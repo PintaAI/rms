@@ -1,508 +1,661 @@
 "use client";
 
-import { PatternLock } from "@/components/pattern-lock";
-import { useState, useCallback } from "react";
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import {
-  Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
+import useSWR, { SWRConfig, useSWRConfig, mutate } from "swr";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { useAuth } from "@/components/auth-provider";
 
-// Simulated database storage (in real app, this would be server-side)
-const patternDatabase: Record<string, number[]> = {};
+const fetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch");
+  return res.json();
+};
 
-export default function ExperimentPage() {
-  const [unlocked, setUnlocked] = useState(false);
-  const [error, setError] = useState(false);
-  
-  // Pattern save/verify state
-  const [savedPattern, setSavedPattern] = useState<number[] | null>(null);
-  const [isSaveMode, setIsSaveMode] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [verifySuccess, setVerifySuccess] = useState(false);
+const slowFetcher = async (url: string) => {
+  await new Promise((r) => setTimeout(r, 2000));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Failed to fetch");
+  return res.json();
+};
 
-  const handlePatternComplete = (pattern: number[]) => {
-    console.log("Pattern drawn:", pattern);
-
-    // Simulate pattern validation
-    // In a real app, you'd compare against a stored pattern
-    if (pattern.length >= 4) {
-      setUnlocked(true);
-      setError(false);
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 1000);
-    }
-  };
-
-  // Save pattern handler
-  const handleSavePattern = useCallback((pattern: number[]) => {
-    if (pattern.length < 4) {
-      setError(true);
-      setTimeout(() => setError(false), 1000);
-      return;
-    }
-    
-    // Simulate saving to database
-    patternDatabase["user_pattern"] = [...pattern];
-    setSavedPattern([...pattern]);
-    setSaveSuccess(true);
-    setIsSaveMode(false);
-    setTimeout(() => setSaveSuccess(false), 2000);
-  }, []);
-
-  // Verify pattern handler
-  const handleVerifyPattern = useCallback((pattern: number[]) => {
-    const storedPattern = patternDatabase["user_pattern"];
-    
-    if (!storedPattern) {
-      setError(true);
-      setTimeout(() => setError(false), 1000);
-      return;
-    }
-
-    // Compare patterns
-    const isMatch =
-      pattern.length === storedPattern.length &&
-      pattern.every((dot, index) => dot === storedPattern[index]);
-
-    if (isMatch) {
-      setVerifySuccess(true);
-      setError(false);
-      setTimeout(() => setVerifySuccess(false), 2000);
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 1000);
-    }
-  }, []);
+function BasicFetch() {
+  const { data, error, isLoading, isValidating } = useSWR(
+    "https://jsonplaceholder.typicode.com/posts/1",
+    fetcher
+  );
 
   return (
-    <div className="container mx-auto py-8 space-y-12">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Pattern Lock Experiments</h1>
+    <Card>
+      <CardHeader>
+        <CardTitle>1. Basic Data Fetching</CardTitle>
+        <CardDescription>Simple fetch with loading, error, and data states</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Badge variant={isLoading ? "default" : "secondary"}>Loading: {String(isLoading)}</Badge>
+          <Badge variant={isValidating ? "default" : "secondary"}>Validating: {String(isValidating)}</Badge>
+          <Badge variant={error ? "destructive" : "secondary"}>Error: {String(!!error)}</Badge>
+        </div>
+        {error && <pre className="text-red-500 text-sm">{error.message}</pre>}
+        {data && <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-40">{JSON.stringify(data, null, 2)}</pre>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConditionalFetching() {
+  const [userId, setUserId] = useState<string>("");
+  const [enabled, setEnabled] = useState(true);
+
+  const { data } = useSWR(
+    enabled && userId ? `https://jsonplaceholder.typicode.com/users/${userId}` : null,
+    fetcher
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>2. Conditional Fetching</CardTitle>
+        <CardDescription>Fetch only when condition is met (null key = no fetch)</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <span className="text-sm">Enable fetching</span>
+        </div>
+        <div className="flex gap-2">
+          <Input
+            placeholder="Enter user ID (1-10)"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            className="max-w-[200px]"
+          />
+          <Button variant="outline" size="sm" onClick={() => setUserId("1")}>User 1</Button>
+          <Button variant="outline" size="sm" onClick={() => setUserId("2")}>User 2</Button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Key: {enabled && userId ? `"users/${userId}"` : "null (no fetch)"}
+        </p>
+        {data && <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-32">{JSON.stringify(data, null, 2)}</pre>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Revalidation() {
+  const { data, mutate: revalidate } = useSWR(
+    "https://jsonplaceholder.typicode.com/posts/2",
+    fetcher,
+    { revalidateOnFocus: true }
+  );
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+
+  const handleRevalidate = async () => {
+    await revalidate();
+    setLastUpdate(new Date());
+  };
+
+  const handleMutate = async () => {
+    await revalidate({ title: "Locally mutated!", body: "This is local data", id: 2 }, false);
+    setLastUpdate(new Date());
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>3. Manual Revalidation</CardTitle>
+        <CardDescription>Control when data is refreshed from server</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={handleRevalidate}>Revalidate (refetch)</Button>
+          <Button size="sm" variant="secondary" onClick={handleMutate}>Set Local Data</Button>
+        </div>
+        {lastUpdate && <p className="text-xs text-muted-foreground">Last update: {lastUpdate.toLocaleTimeString()}</p>}
+        {data && <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-32">{JSON.stringify(data, null, 2)}</pre>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ErrorHandling() {
+  const [shouldFail, setShouldFail] = useState(false);
+  const { data, error, isLoading } = useSWR(
+    shouldFail ? "https://jsonplaceholder.typicode.com/invalid-endpoint" : "https://jsonplaceholder.typicode.com/posts/3",
+    fetcher,
+    {
+      onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+        if (retryCount >= 3) return;
+        setTimeout(() => revalidate({ retryCount }), 1000);
+      },
+    }
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>4. Error Handling & Retry</CardTitle>
+        <CardDescription>Automatic retry with configurable behavior</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button size="sm" variant={shouldFail ? "destructive" : "outline"} onClick={() => setShouldFail(true)}>
+            Trigger Error
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShouldFail(false)}>
+            Fix Endpoint
+          </Button>
+        </div>
+        {isLoading && <Badge>Loading...</Badge>}
+        {error && (
+          <div className="bg-red-100 dark:bg-red-900/20 p-2 rounded text-sm text-red-600 dark:text-red-400">
+            Error: {error.message}
+          </div>
+        )}
+        {data && <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-32">{JSON.stringify(data, null, 2)}</pre>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Polling() {
+  const [polling, setPolling] = useState(false);
+  const [count, setCount] = useState(0);
+
+  useSWR(
+    polling ? `https://jsonplaceholder.typicode.com/posts/${count % 10 + 1}` : null,
+    fetcher,
+    {
+      refreshInterval: 2000,
+      onSuccess: () => setCount((c) => c + 1),
+    }
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>5. Polling / Real-time Updates</CardTitle>
+        <CardDescription>Auto-refresh data at intervals</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2 items-center">
+          <Button size="sm" onClick={() => setPolling(!polling)}>
+            {polling ? "Stop Polling" : "Start Polling"}
+          </Button>
+          {polling && <Badge className="animate-pulse">Polling every 2s</Badge>}
+        </div>
+        <p className="text-sm text-muted-foreground">Fetches: {count} | Change post ID: {(count % 10) + 1}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Deduplication() {
+  const [requests, setRequests] = useState<string[]>([]);
+
+  const dedupeFetcher = async (url: string) => {
+    setRequests((r) => [...r, `Request at ${new Date().toLocaleTimeString()}`]);
+    const res = await fetch(url);
+    return res.json();
+  };
+
+  useSWR("https://jsonplaceholder.typicode.com/posts/5", dedupeFetcher, { dedupingInterval: 5000 });
+  useSWR("https://jsonplaceholder.typicode.com/posts/5", dedupeFetcher, { dedupingInterval: 5000 });
+  useSWR("https://jsonplaceholder.typicode.com/posts/5", dedupeFetcher, { dedupingInterval: 5000 });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>6. Request Deduplication</CardTitle>
+        <CardDescription>Multiple hooks with same key = single request</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm">3 useSWR calls with the same key - only 1 network request!</p>
+        <div className="text-sm bg-muted p-2 rounded max-h-32 overflow-auto">
+          {requests.map((r, i) => (
+            <div key={i}>{r}</div>
+          ))}
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setRequests([])}>Clear Log</Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OptimisticUI() {
+  const [todos, setTodos] = useState([
+    { id: 1, title: "Learn SWR", completed: false },
+    { id: 2, title: "Build awesome app", completed: false },
+  ]);
+
+  const { data, mutate: updateTodos } = useSWR("local-todos", () => todos, {
+    fallbackData: todos,
+  });
+
+  const toggleTodo = async (id: number) => {
+    const updatedTodos = (data || []).map((t: any) =>
+      t.id === id ? { ...t, completed: !t.completed } : t
+    );
+
+    await updateTodos(updatedTodos, false);
+    setTodos(updatedTodos);
+  };
+
+  const addTodo = async (title: string) => {
+    const newTodo = { id: Date.now(), title, completed: false };
+    const updatedTodos = [...(data || []), newTodo];
+    await updateTodos(updatedTodos, false);
+    setTodos(updatedTodos);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>7. Optimistic UI Updates</CardTitle>
+        <CardDescription>Update UI immediately, sync with server later</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const form = e.target as HTMLFormElement;
+            const input = form.elements.namedItem("todo") as HTMLInputElement;
+            if (input.value.trim()) {
+              addTodo(input.value.trim());
+              input.value = "";
+            }
+          }}
+          className="flex gap-2"
+        >
+          <Input name="todo" placeholder="Add todo..." className="flex-1" />
+          <Button type="submit" size="sm">Add</Button>
+        </form>
+        <ul className="space-y-2">
+          {(data || []).map((todo: any) => (
+            <li key={todo.id} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={todo.completed}
+                onChange={() => toggleTodo(todo.id)}
+              />
+              <span className={todo.completed ? "line-through text-muted-foreground" : ""}>
+                {todo.title}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Prefetching() {
+  const { mutate } = useSWRConfig();
+  const [prefetched, setPrefetched] = useState(false);
+
+  const prefetchUser = async (id: number) => {
+    await mutate(
+      `https://jsonplaceholder.typicode.com/users/${id}`,
+      fetcher(`https://jsonplaceholder.typicode.com/users/${id}`)
+    );
+    setPrefetched(true);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>8. Prefetching / Cache Warm-up</CardTitle>
+        <CardDescription>Preload data before user needs it</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => prefetchUser(1)}>Prefetch User 1</Button>
+          <Button size="sm" onClick={() => prefetchUser(2)}>Prefetch User 2</Button>
+          <Button size="sm" onClick={() => prefetchUser(3)}>Prefetch User 3</Button>
+        </div>
+        {prefetched && <Badge>Data cached! Click link below to see instant load.</Badge>}
+        <div className="text-sm">
+          <p>Then navigate to see instant load:</p>
+          <div className="flex gap-2 mt-2">
+            <PrefetchDemo id={1} />
+            <PrefetchDemo id={2} />
+            <PrefetchDemo id={3} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PrefetchDemo({ id }: { id: number }) {
+  const [show, setShow] = useState(false);
+  const { data, isLoading } = useSWR(
+    show ? `https://jsonplaceholder.typicode.com/users/${id}` : null,
+    fetcher
+  );
+
+  return (
+    <div className="border p-2 rounded">
+      <Button size="sm" variant="outline" onClick={() => setShow(!show)}>
+        {show ? "Hide" : "Show"} User {id}
+      </Button>
+      {show && (
+        <div className="mt-2 text-xs bg-muted p-2 rounded">
+          {isLoading ? "Loading..." : data?.name || "No data"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GlobalConfig() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>9. Global Configuration</CardTitle>
+        <CardDescription>Wrap app with SWRConfig for shared settings</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <pre className="text-sm bg-muted p-2 rounded overflow-auto">{`// In your root layout or _app.tsx
+<SWRConfig value={{
+  revalidateOnFocus: true,    // Refetch on window focus
+  revalidateOnReconnect: true, // Refetch on network reconnect
+  shouldRetryOnError: true,   // Retry on error
+  dedupingInterval: 2000,      // Dedupe within 2s
+  refreshInterval: 0,          // No auto-refresh
+  fetcher: (url) => fetch(url).then(r => r.json())
+}}>
+  <App />
+</SWRConfig>`}</pre>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CacheOperations() {
+  const { mutate } = useSWRConfig();
+  const [log, setLog] = useState<string[]>([]);
+  const [cacheCount, setCacheCount] = useState(1);
+
+  useSWR("https://jsonplaceholder.typicode.com/posts/10", fetcher);
+
+  const addLog = (msg: string) => setLog((l) => [...l, `${new Date().toLocaleTimeString()}: ${msg}`]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>10. Cache Operations</CardTitle>
+        <CardDescription>Direct cache manipulation via useSWRConfig</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => {
+              mutate("https://jsonplaceholder.typicode.com/posts/10");
+              addLog("Revalidated post/10");
+            }}
+          >
+            Revalidate
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              mutate("https://jsonplaceholder.typicode.com/posts/10", { title: "Manual cache!" }, false);
+              addLog("Set local cache for post/10");
+            }}
+          >
+            Set Cache
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              mutate("https://jsonplaceholder.typicode.com/posts/10", undefined, false);
+              setCacheCount(0);
+              addLog("Cleared cache for post/10");
+            }}
+          >
+            Clear
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              mutate(
+                (key: string) => key.startsWith("https://jsonplaceholder"),
+                undefined,
+                { revalidate: true }
+              );
+              addLog("Revalidated ALL keys");
+            }}
+          >
+            Revalidate All
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => {
+              mutate(
+                (key: string) => key.startsWith("https://jsonplaceholder"),
+                undefined,
+                false
+              );
+              setCacheCount(0);
+              addLog("Cleared ALL cache");
+            }}
+          >
+            Clear All
+          </Button>
+        </div>
+        <p className="text-sm">Active caches: {cacheCount} entries</p>
+        <div className="text-xs bg-muted p-2 rounded max-h-24 overflow-auto">
+          {log.slice(-5).map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LoadingSkeleton() {
+  const { data, isLoading } = useSWR(
+    "https://jsonplaceholder.typicode.com/posts/20",
+    slowFetcher
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>11. Loading Skeletons</CardTitle>
+        <CardDescription>Show skeleton while loading with fallbackData</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="space-y-2 animate-pulse">
+            <div className="h-4 bg-muted rounded w-3/4"></div>
+            <div className="h-4 bg-muted rounded w-1/2"></div>
+            <div className="h-4 bg-muted rounded w-2/3"></div>
+          </div>
+        ) : (
+          <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-32">{JSON.stringify(data, null, 2)}</pre>
+        )}
+        <Button size="sm" onClick={() => mutate("https://jsonplaceholder.typicode.com/posts/20")}>
+          Refetch (2s delay)
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DependentQueries() {
+  const [postId, setPostId] = useState<string>("1");
+  
+  const { data: post } = useSWR(
+    `https://jsonplaceholder.typicode.com/posts/${postId}`,
+    fetcher
+  );
+  
+  const { data: user } = useSWR(
+    post ? `https://jsonplaceholder.typicode.com/users/${post.userId}` : null,
+    fetcher
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>12. Dependent Queries</CardTitle>
+        <CardDescription>Fetch B only after A returns (cascade fetches)</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setPostId("1")}>Post 1</Button>
+          <Button size="sm" variant="outline" onClick={() => setPostId("2")}>Post 2</Button>
+          <Button size="sm" variant="outline" onClick={() => setPostId("3")}>Post 3</Button>
+        </div>
+        <div className="grid gap-2 text-sm">
+          <div>
+            <p className="font-medium">Post:</p>
+            <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-20">
+              {post ? JSON.stringify({ title: post.title, userId: post.userId }, null, 2) : "Loading..."}
+            </pre>
+          </div>
+          <div>
+            <p className="font-medium">User (depends on post.userId):</p>
+            <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-20">
+              {user ? JSON.stringify({ name: user.name, email: user.email }, null, 2) : "Waiting for post..."}
+            </pre>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PauseFetching() {
+  const [paused, setPaused] = useState(false);
+  const { data, isValidating } = useSWR(
+    paused ? null : "https://jsonplaceholder.typicode.com/comments/1",
+    fetcher
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>13. Pause/Resume Fetching</CardTitle>
+        <CardDescription>Conditional key = null to pause fetching</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setPaused(!paused)}>
+            {paused ? "Resume Fetching" : "Pause Fetching"}
+          </Button>
+          {paused && <Badge variant="secondary">Paused</Badge>}
+          {isValidating && <Badge>Fetching...</Badge>}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Key: {paused ? "null (paused)" : '"comments/1"'}
+        </p>
+        {data && <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-32">{JSON.stringify(data, null, 2)}</pre>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SessionDisplay() {
+  const { session, isPending } = useAuth();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>14. Session Data</CardTitle>
+        <CardDescription>Current authenticated session from Better Auth</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Badge variant={isPending ? "default" : "secondary"}>Loading: {String(isPending)}</Badge>
+          <Badge variant={session ? "default" : "secondary"}>Authenticated: {String(!!session)}</Badge>
+        </div>
+        {isPending && <p className="text-sm text-muted-foreground">Loading session...</p>}
+        {!isPending && !session && <p className="text-sm text-muted-foreground">No active session</p>}
+        {session && (
+          <pre className="text-sm bg-muted p-2 rounded overflow-auto max-h-60">{JSON.stringify(session, null, 2)}</pre>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function ExperimentPage() {
+  return (
+    <div className="container mx-auto py-8 space-y-6 max-w-4xl">
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold">SWR Interactive Demo</h1>
         <p className="text-muted-foreground">
-          Testing the PatternLock component in various container contexts.
+          Explore all SWR capabilities with working examples. Open DevTools Network tab to see requests.
         </p>
       </div>
 
-      {/* 1. Default - Centered */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">1. Default (Centered)</h2>
-          <p className="text-sm text-muted-foreground">
-            Standard usage with centered layout.
-          </p>
-        </div>
-        <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 border rounded-lg bg-muted/30">
-          <div className="text-center">
-            <h3 className="text-lg font-semibold">
-              {unlocked ? "🔓 Unlocked!" : "🔒 Pattern Lock"}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {unlocked
-                ? "You have successfully drawn the pattern!"
-                : "Draw a pattern with at least 4 dots to unlock"}
-            </p>
+      <Separator />
+
+      <div className="grid gap-6">
+        <BasicFetch />
+        <ConditionalFetching />
+        <Revalidation />
+        <ErrorHandling />
+        <Polling />
+        <Deduplication />
+        <OptimisticUI />
+        <Prefetching />
+        <GlobalConfig />
+        <CacheOperations />
+        <LoadingSkeleton />
+        <DependentQueries />
+        <PauseFetching />
+        <SessionDisplay />
+      </div>
+
+      <Separator />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Reference</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-4">
+          <div>
+            <p className="font-medium">useSWR(key, fetcher, options)</p>
+            <pre className="bg-muted p-2 rounded mt-1 overflow-auto">{`const { data, error, isLoading, isValidating, mutate } = useSWR(
+  '/api/user',           // key (null = no fetch)
+  fetcher,               // async function
+  {
+    revalidateOnFocus: true,
+    revalidateOnReconnect: true,
+    refreshInterval: 0,
+    dedupingInterval: 2000,
+    shouldRetryOnError: true,
+    errorRetryCount: 3,
+    errorRetryInterval: 5000,
+    fallbackData: [],
+    suspense: false,
+  }
+)`}</pre>
           </div>
-
-          <PatternLock
-            width={280}
-            height={280}
-            error={error}
-            onPatternComplete={handlePatternComplete}
-            onPatternChange={(pattern) => console.log("Current pattern:", pattern)}
-          />
-
-          {unlocked && (
-            <Button variant="secondary" onClick={() => setUnlocked(false)}>
-              Lock Again
-            </Button>
-          )}
-        </div>
-      </section>
-
-      {/* 2. Limited Parent Div */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">2. Limited Parent Div</h2>
-          <p className="text-sm text-muted-foreground">
-            Constrained within a small container with overflow handling.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Small container */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Small (200x200)</h3>
-            <div className="w-[200px] h-[200px] overflow-hidden border border-dashed rounded flex items-center justify-center">
-              <PatternLock
-                width={180}
-                height={180}
-                onPatternComplete={(p) => console.log("Small:", p)}
-              />
-            </div>
+          <div>
+            <p className="font-medium">Mutate (local update)</p>
+            <pre className="bg-muted p-2 rounded mt-1">{`mutate(key, newData, revalidate?)  // Update cache
+mutate(key)                          // Revalidate (refetch)
+mutate(key, undefined, false)        // Clear cache`}</pre>
           </div>
-
-          {/* Medium container */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Medium (250x250)</h3>
-            <div className="w-[250px] h-[250px] overflow-hidden border border-dashed rounded flex items-center justify-center">
-              <PatternLock
-                width={230}
-                height={230}
-                onPatternComplete={(p) => console.log("Medium:", p)}
-              />
-            </div>
+          <div>
+            <p className="font-medium">useSWRConfig()</p>
+            <pre className="bg-muted p-2 rounded mt-1">{`const { cache, mutate, preload } = useSWRConfig()`}</pre>
           </div>
-
-          {/* Container with padding */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">With Padding</h3>
-            <div className="w-[280px] h-[280px] overflow-hidden border border-dashed rounded p-4 flex items-center justify-center bg-background">
-              <PatternLock
-                width={240}
-                height={240}
-                onPatternComplete={(p) => console.log("Padded:", p)}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 3. Scroll View */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">3. Scroll View</h2>
-          <p className="text-sm text-muted-foreground">
-            Inside a scrollable container with other content.
-          </p>
-        </div>
-        <div className="border rounded-lg bg-muted/30 overflow-hidden">
-          <div className="h-[400px] overflow-y-auto p-4 space-y-4">
-            <div className="p-4 bg-background rounded border">
-              <h3 className="font-medium">Scrollable Content Above</h3>
-              <p className="text-sm text-muted-foreground">
-                Scroll down to see the pattern lock component.
-              </p>
-            </div>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="p-4 bg-background rounded border">
-                <h3 className="font-medium">Content Block {i}</h3>
-                <p className="text-sm text-muted-foreground">
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do
-                  eiusmod tempor incididunt ut labore et dolore magna aliqua.
-                </p>
-              </div>
-            ))}
-            <div className="flex justify-center py-4 bg-background rounded border">
-              <PatternLock
-                width={260}
-                height={260}
-                onPatternComplete={(p) => console.log("Scroll view:", p)}
-              />
-            </div>
-            {[4, 5, 6].map((i) => (
-              <div key={i} className="p-4 bg-background rounded border">
-                <h3 className="font-medium">Content Block {i}</h3>
-                <p className="text-sm text-muted-foreground">
-                  Ut enim ad minim veniam, quis nostrud exercitation ullamco
-                  laboris nisi ut aliquip ex ea commodo consequat.
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Inside Sheet */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">4. Inside Sheet</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock rendered inside a sheet component.
-          </p>
-        </div>
-        <Sheet>
-          <SheetTrigger render={<Button variant="outline">Open Sheet with Pattern Lock</Button>} />
-          <SheetContent side="bottom" className="h-auto">
-            <SheetHeader>
-              <SheetTitle>Unlock with Pattern</SheetTitle>
-              <SheetDescription>
-                Draw your pattern to unlock the secure content.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="flex justify-center py-6">
-              <PatternLock
-                width={280}
-                height={280}
-                onPatternComplete={(p) => {
-                  console.log("Sheet pattern:", p);
-                  if (p.length >= 4) {
-                    alert("Pattern accepted!");
-                  }
-                }}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </section>
-
-      {/* 5. Inside Dialog */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">5. Inside Dialog</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock rendered inside a modal dialog.
-          </p>
-        </div>
-        <Dialog>
-          <DialogTrigger render={<Button variant="outline">Open Dialog with Pattern Lock</Button>} />
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Pattern Authentication</DialogTitle>
-              <DialogDescription>
-                Please draw your security pattern to continue.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-center py-4">
-              <PatternLock
-                width={260}
-                height={260}
-                onPatternComplete={(p) => {
-                  console.log("Dialog pattern:", p);
-                  if (p.length >= 4) {
-                    alert("Pattern accepted!");
-                  }
-                }}
-              />
-            </div>
-          </DialogContent>
-        </Dialog>
-      </section>
-
-      {/* 6. Custom Styling */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">6. Custom Colors</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock with custom color schemes.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Green theme */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Success Theme</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={200}
-                height={200}
-                primaryColor="#22c55e"
-                inactiveColor="#86efac"
-                onPatternComplete={(p) => console.log("Green:", p)}
-              />
-            </div>
-          </div>
-
-          {/* Purple theme */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Purple Theme</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={200}
-                height={200}
-                primaryColor="#a855f7"
-                inactiveColor="#d8b4fe"
-                onPatternComplete={(p) => console.log("Purple:", p)}
-              />
-            </div>
-          </div>
-
-          {/* Orange theme */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Orange Theme</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={200}
-                height={200}
-                primaryColor="#f97316"
-                inactiveColor="#fdba74"
-                onPatternComplete={(p) => console.log("Orange:", p)}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 7. Different Grid Sizes */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">7. Different Grid Sizes</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock with configurable grid dimensions.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* 3x3 Grid */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">3×3 Grid (Default)</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={200}
-                height={200}
-                cols={3}
-                rows={3}
-                onPatternComplete={(p) => console.log("3x3:", p)}
-              />
-            </div>
-          </div>
-
-          {/* 4x4 Grid */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">4×4 Grid</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={240}
-                height={240}
-                cols={4}
-                rows={4}
-                onPatternComplete={(p) => console.log("4x4:", p)}
-              />
-            </div>
-          </div>
-
-          {/* 3x4 Grid */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">3×4 Grid</h3>
-            <div className="flex justify-center">
-              <PatternLock
-                width={200}
-                height={260}
-                cols={3}
-                rows={4}
-                onPatternComplete={(p) => console.log("3x4:", p)}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 8. Save & Verify Pattern (Database Simulation) */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">8. Save & Verify Pattern</h2>
-          <p className="text-sm text-muted-foreground">
-            Simulate saving a pattern to database and verifying it later.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Save Pattern */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Save Pattern</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Draw a pattern with at least 4 dots to save it.
-            </p>
-            <div className="flex flex-col items-center gap-4">
-              <PatternLock
-                width={240}
-                height={240}
-                error={error && isSaveMode}
-                autoReset={false}
-                onPatternComplete={handleSavePattern}
-              />
-              {saveSuccess && (
-                <p className="text-sm text-green-600 font-medium">
-                  ✓ Pattern saved successfully!
-                </p>
-              )}
-              {savedPattern && (
-                <p className="text-xs text-muted-foreground">
-                  Saved: {savedPattern.join(" → ")}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Verify Pattern */}
-          <div className="border rounded-lg p-4 bg-muted/30">
-            <h3 className="text-sm font-medium mb-2">Verify Pattern</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Draw the saved pattern to verify it matches.
-            </p>
-            <div className="flex flex-col items-center gap-4">
-              <PatternLock
-                width={240}
-                height={240}
-                error={error && !isSaveMode}
-                autoReset={false}
-                disabled={!savedPattern}
-                onPatternComplete={handleVerifyPattern}
-              />
-              {verifySuccess && (
-                <p className="text-sm text-green-600 font-medium">
-                  ✓ Pattern verified successfully!
-                </p>
-              )}
-              {error && !isSaveMode && (
-                <p className="text-sm text-red-600 font-medium">
-                  ✗ Pattern does not match!
-                </p>
-              )}
-              {!savedPattern && (
-                <p className="text-xs text-muted-foreground">
-                  Save a pattern first to enable verification.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 9. With Pattern Numbers */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">9. Debug Mode</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock with visible dot numbers for debugging.
-          </p>
-        </div>
-        <div className="flex justify-center">
-          <PatternLock
-            width={280}
-            height={280}
-            showPatternNumbers
-            onPatternComplete={(p) => console.log("Debug pattern:", p)}
-          />
-        </div>
-      </section>
-
-      {/* 10. Disabled State */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-xl font-semibold">10. Disabled State</h2>
-          <p className="text-sm text-muted-foreground">
-            Pattern lock in disabled mode.
-          </p>
-        </div>
-        <div className="flex justify-center">
-          <PatternLock
-            width={280}
-            height={280}
-            disabled
-            onPatternComplete={(p) => console.log("Disabled:", p)}
-          />
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </div>
   );
 }

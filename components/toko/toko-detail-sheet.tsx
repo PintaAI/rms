@@ -1,5 +1,29 @@
 "use client";
 
+/**
+ * TokoDetailSheet - Sheet dialog for creating/updating toko (store)
+ *
+ * OPTIMISTIC UI ARCHITECTURE (follows dev-docs/optimistic-ui-guide.md):
+ *
+ * This form supports optimistic UI updates via callbacks:
+ *
+ * CREATE:
+ * - onOptimisticCreate(tempToko): Called BEFORE server request
+ * - onSuccess(realToko?): Called AFTER server success
+ * - onRevertCreate(): Called on failure to signal revert needed
+ *
+ * UPDATE:
+ * - onOptimisticUpdate(updatedToko): Called BEFORE server request
+ * - onSuccess(realToko?): Called AFTER server success
+ * - onRevertUpdate(): Called on failure to signal revert needed
+ *
+ * The parent component should:
+ * - Track pendingMutationsRef counter
+ * - Apply optimistic state on onOptimisticCreate/onOptimisticUpdate
+ * - Decrement counter and refresh on onSuccess
+ * - Revert state on onRevertCreate/onRevertUpdate
+ */
+
 import { useEffect, useState, useRef } from "react";
 import {
   Sheet,
@@ -8,17 +32,27 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getTokoById, createToko, updateToko } from "@/actions/toko";
+import { getTokoById, createToko, updateToko, deleteToko } from "@/actions/toko";
 import { AddUserForm } from "@/components/add-user-form";
 import { UserList } from "@/components/user-list";
-import { RiStore2Line, RiTeamLine, RiToolsLine, RiLoader4Line, RiDeleteBinLine, RiImageLine,} from "@remixicon/react";
+import { RiStore2Line, RiTeamLine, RiToolsLine, RiLoader4Line, RiDeleteBinLine, RiImageLine } from "@remixicon/react";
 import type { Toko } from "@/actions/toko";
 
-// Logo size limit: 2MB
 const LOGO_MAX_SIZE = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -26,16 +60,30 @@ interface TokoDetailSheetProps {
   tokoId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSuccess?: () => void;
+  onOptimisticCreate?: (tempToko: Toko) => void;
+  onOptimisticUpdate?: (updatedToko: Toko) => void;
+  onRevertCreate?: () => void;
+  onRevertUpdate?: () => void;
+  onSuccess?: (toko?: Toko) => void;
+  onDelete?: (tokoId: string) => void;
 }
 
-export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoDetailSheetProps) {
+export function TokoDetailSheet({
+  tokoId,
+  open,
+  onOpenChange,
+  onOptimisticCreate,
+  onOptimisticUpdate,
+  onRevertCreate,
+  onRevertUpdate,
+  onSuccess,
+  onDelete,
+}: TokoDetailSheetProps) {
   const [toko, setToko] = useState<Toko | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Form state for create/edit mode
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [phone, setPhone] = useState("");
@@ -43,6 +91,9 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const tokoRef = useRef(toko);
+  tokoRef.current = toko;
 
   const isCreateMode = !tokoId;
   const isEditMode = tokoId && toko;
@@ -54,7 +105,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
         const result = await getTokoById(tokoId);
         if (result.success && result.data) {
           setToko(result.data);
-          // Pre-fill form
           setName(result.data.name);
           setAddress(result.data.address || "");
           setPhone(result.data.phone || "");
@@ -63,7 +113,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
         }
         setIsLoading(false);
       } else if (open && !tokoId) {
-        // Create mode - reset form
         setToko(null);
         setName("");
         setAddress("");
@@ -80,15 +129,13 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
       setError("Invalid file type. Please upload a JPEG, PNG, WebP, or GIF image.");
       return;
     }
 
-    // Validate file size
     if (file.size > LOGO_MAX_SIZE) {
-      setError(`File size exceeds the limit of ${LOGO_MAX_SIZE / 1024 / 1024}MB. Please upload a smaller image.`);
+      setError(`File size exceeds the limit of ${LOGO_MAX_SIZE / 1024 / 1024}MB.`);
       return;
     }
 
@@ -96,11 +143,9 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
     setError(null);
 
     try {
-      // Create preview
       const previewUrl = URL.createObjectURL(file);
       setLogoPreview(previewUrl);
 
-      // Upload to blob storage
       const formData = new FormData();
       formData.append("file", file);
       formData.append("pathname", `logos/${Date.now()}-${file.name}`);
@@ -123,7 +168,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
       setLogoPreview(null);
     } finally {
       setIsUploadingLogo(false);
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -131,35 +175,56 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
   }
 
   async function handleRemoveLogo() {
-    // Delete from blob storage if there's a stored URL
     if (logoUrl && logoUrl.startsWith("http")) {
       try {
         await fetch("/api/upload", {
           method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: logoUrl }),
         });
       } catch (err) {
-        console.error("Failed to delete logo from blob storage:", err);
+        console.error("Failed to delete logo:", err);
       }
     }
-    
-    // Clear local state
+
     setLogoUrl(null);
     setLogoPreview(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setIsSaving(true);
     setError(null);
 
+    const optimisticToko: Toko = {
+      id: tokoRef.current?.id || `temp-${Date.now()}`,
+      name,
+      address: address || null,
+      phone: phone || null,
+      logoUrl: logoUrl || null,
+      status: tokoRef.current?.status || "active",
+      createdAt: tokoRef.current?.createdAt || new Date(),
+      updatedAt: new Date(),
+    };
+
+    if (!tokoRef.current && onOptimisticCreate) {
+      onOptimisticCreate(optimisticToko);
+      onOpenChange(false);
+    }
+
+    if (tokoRef.current && onOptimisticUpdate) {
+      onOptimisticUpdate(optimisticToko);
+      onOpenChange(false);
+    }
+
+    if (!onOptimisticCreate && !onOptimisticUpdate) {
+      onSuccess?.(optimisticToko);
+      onOpenChange(false);
+    }
+
     let result;
-    if (isEditMode && toko) {
+    if (isEditMode && tokoRef.current) {
       result = await updateToko({
-        id: toko.id,
+        id: tokoRef.current.id,
         name,
         address: address || undefined,
         phone: phone || undefined,
@@ -174,15 +239,36 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
       });
     }
 
-    setIsSaving(false);
-
-    if (result.success) {
-      onOpenChange(false);
-      if (onSuccess) {
-        onSuccess();
-      }
-    } else {
+    if (!result.success) {
       setError(result.error || `Failed to ${isEditMode ? "update" : "create"} toko`);
+      if (!tokoRef.current && onRevertCreate) {
+        onRevertCreate();
+      }
+      if (tokoRef.current && onRevertUpdate) {
+        onRevertUpdate();
+      }
+      if (!onRevertCreate && !onRevertUpdate) {
+        onSuccess?.();
+      }
+    } else if (result.data) {
+      onSuccess?.(result.data);
+    }
+  }
+
+  async function handleDelete() {
+    if (!tokoRef.current) return;
+    
+    setIsDeleting(true);
+    setError(null);
+
+    const result = await deleteToko(tokoRef.current.id);
+
+    if (!result.success) {
+      setError(result.error || "Failed to delete toko");
+      setIsDeleting(false);
+    } else {
+      onDelete?.(tokoRef.current.id);
+      onOpenChange(false);
     }
   }
 
@@ -226,8 +312,7 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                   </>
                 )}
               </TabsList>
-              
-              {/* Details Tab - for both create and edit */}
+
               <TabsContent value="details" className="mt-4 space-y-4">
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {error && (
@@ -235,11 +320,10 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       {error}
                     </div>
                   )}
-                  
-                  {/* Logo Upload - Top Center */}
+
                   <div className="space-y-2 flex flex-col items-center">
                     <Label className="font-bold">Logo</Label>
-                    
+
                     {logoPreview ? (
                       <div className="relative w-32 h-32 rounded-lg overflow-hidden border">
                         <img
@@ -256,7 +340,7 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                           type="button"
                           onClick={handleRemoveLogo}
                           className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full hover:bg-destructive/90"
-                          disabled={isSaving || isUploadingLogo}
+                          disabled={isUploadingLogo}
                         >
                           <RiDeleteBinLine className="text-background w-4 h-4" />
                         </button>
@@ -276,21 +360,21 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                         )}
                       </div>
                     )}
-                    
+
                     <p className="text-xs text-muted-foreground text-center">
                       Max file size: 2MB. Supported formats: JPEG, PNG, WebP, GIF
                     </p>
-                    
+
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
                       onChange={handleLogoUpload}
                       className="hidden"
-                      disabled={isSaving || isUploadingLogo}
+                      disabled={isUploadingLogo}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="name">Name *</Label>
                     <Input
@@ -299,7 +383,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       onChange={(e) => setName(e.target.value)}
                       placeholder="Enter toko name"
                       required
-                      disabled={isSaving}
                     />
                   </div>
                   <div className="space-y-2">
@@ -309,7 +392,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
                       placeholder="Enter address (optional)"
-                      disabled={isSaving}
                     />
                   </div>
                   <div className="space-y-2">
@@ -320,27 +402,63 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="Enter phone number (optional)"
-                      disabled={isSaving}
                     />
                   </div>
-                  
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => onOpenChange(false)}
-                      disabled={isSaving}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSaving}>
-                      {isSaving ? "Saving..." : isEditMode ? "Update" : "Create"}
-                    </Button>
+
+                  <div className="flex justify-between gap-2 pt-2">
+                    {isEditMode && toko && (
+                      <AlertDialog>
+                        <AlertDialogTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              disabled={isDeleting}
+                            >
+                              {isDeleting ? (
+                                <RiLoader4Line className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <RiDeleteBinLine className="w-4 h-4" />
+                              )}
+                              Delete
+                            </Button>
+                          }
+                        />
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Toko</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete "{toko.name}" and all associated data including services, spareparts, and user assignments. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={handleDelete}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit">
+                        {isEditMode ? "Update" : "Create"}
+                      </Button>
+                    </div>
                   </div>
                 </form>
               </TabsContent>
 
-              {/* Staff Tab - only for edit mode */}
               {isEditMode && toko && (
                 <TabsContent value="staff" className="mt-2 space-y-2">
                   <AddUserForm tokoId={toko.id} role="staff" />
@@ -348,7 +466,6 @@ export function TokoDetailSheet({ tokoId, open, onOpenChange, onSuccess }: TokoD
                 </TabsContent>
               )}
 
-              {/* Technician Tab - only for edit mode */}
               {isEditMode && toko && (
                 <TabsContent value="technician" className="mt-4 space-y-4">
                   <AddUserForm tokoId={toko.id} role="technician" />

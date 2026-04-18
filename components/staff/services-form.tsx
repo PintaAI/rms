@@ -1,6 +1,27 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+/**
+ * ServicesForm - Form dialog for creating/updating service tickets
+ *
+ * OPTIMISTIC UI ARCHITECTURE (follows dev-docs/optimistic-ui-guide.md):
+ *
+ * This form supports optimistic UI updates via callbacks:
+ *
+ * CREATE:
+ * - onOptimisticCreate(tempService): Called BEFORE server request
+ * - onSuccess(): Called AFTER server success, decrement mutation guard
+ * - onRevertCreate(tempId): Called on failure to remove temp item
+ *
+ * UPDATE:
+ * - onOptimisticUpdate(updatedService): Called BEFORE server request
+ * - onSuccess(): Called AFTER server success, decrement mutation guard
+ * - onRevertUpdate(originalService): Called on failure to restore original
+ *
+ * CRITICAL: onSuccess must be called AFTER server success to decrement
+ * the pendingMutationsRef counter in the parent component.
+ */
+
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createService, updateService } from "@/actions";
 import type { ServiceListItem as ServiceListItemType } from "@/actions";
 import type { ServiceTableItem } from "@/components/dashboard/service-table/types";
@@ -43,6 +64,7 @@ interface ServicesFormProps {
   onOptimisticCreate?: (tempService: ServiceListItemType) => void;
   onOptimisticUpdate?: (updatedService: ServiceListItemType) => void;
   onRevertCreate?: (tempId: string) => void;
+  onRevertUpdate?: (originalService: ServiceListItemType) => void;
 }
 
 export function ServicesForm({
@@ -54,6 +76,7 @@ export function ServicesForm({
   onOptimisticCreate,
   onOptimisticUpdate,
   onRevertCreate,
+  onRevertUpdate,
 }: ServicesFormProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +94,12 @@ export function ServicesForm({
   const [showPatternLock, setShowPatternLock] = useState(false);
   const [patternError, setPatternError] = useState(false);
   const [patternResetKey, setPatternResetKey] = useState(0);
+
+  const editDataRef = useRef(editData);
+
+  useEffect(() => {
+    editDataRef.current = editData;
+  }, [editData]);
 
   const resetForm = useCallback(() => {
     setIsEditMode(false);
@@ -238,6 +267,10 @@ export function ServicesForm({
     } else {
       if (!isEditMode && onRevertCreate) {
         onRevertCreate(tempId);
+      }
+      if (isEditMode && editDataRef.current && onRevertUpdate) {
+        const originalData = editDataRef.current as ServiceListItemType;
+        onRevertUpdate(originalData);
       }
       setError(result.error || "Failed to " + (isEditMode ? "update" : "create") + " service");
     }

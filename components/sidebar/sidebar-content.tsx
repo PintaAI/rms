@@ -21,9 +21,13 @@ import {
   RiStore2Line,
   RiToolsLine,
   RiCheckboxCircleLine,
+  RiInboxArchiveLine,
+  RiToolsFill,
+  RiPhoneFill,
+  RiSmartphoneLine,
 } from "@remixicon/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import { useToko } from "@/components/toko/toko-provider";
 import { getCompletedServiceCounts } from "@/actions/dashboard";
@@ -55,10 +59,21 @@ export const sidebarConfigs: Record<string, SidebarConfig> = {
       {
         title: "Services",
         href: "/dashboard/admin/services",
-        icon: RiFileListLine,
+        icon: RiSmartphoneLine,
         children: [
+                    {
+            title: "Masuk",
+            href: "/dashboard/admin/services?status=received",
+            icon: RiInboxArchiveLine
+          },
           {
-            title: "Completed",
+            title: "Sedang Diperbaiki",
+            href: "/dashboard/admin/services?status=repairing",
+            icon:  RiToolsFill,
+          },
+
+          {
+            title: "Selesai",
             href: "/dashboard/admin/completed",
             icon: RiCheckboxCircleLine,
             badge: { key: "completed" },
@@ -130,6 +145,7 @@ export const sidebarConfigs: Record<string, SidebarConfig> = {
 export function RoleSidebarContent() {
   const { session, isPending } = useAuth();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { selectedToko } = useToko();
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
 
@@ -162,6 +178,17 @@ export function RoleSidebarContent() {
   const role = (session.user as any).role || "staff";
   const config = sidebarConfigs[role] || sidebarConfigs.staff;
 
+  const isActiveUrl = (href: string) => {
+    const [urlPath, urlQuery] = href.split("?");
+    if (urlPath !== pathname) return false;
+    if (!urlQuery) return true;
+    const params = new URLSearchParams(urlQuery);
+    for (const [key, value] of params.entries()) {
+      if (searchParams.get(key) !== value) return false;
+    }
+    return true;
+  };
+
   return (
     <SidebarContent>
       <SidebarGroup>
@@ -172,7 +199,7 @@ export function RoleSidebarContent() {
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   render={<Link href={item.href} />}
-                  isActive={pathname === item.href}
+                  isActive={isActiveUrl(item.href)}
                   tooltip={item.title}
                 >
                   <item.icon />
@@ -189,7 +216,7 @@ export function RoleSidebarContent() {
                       <SidebarMenuSubItem key={child.href}>
                         <SidebarMenuSubButton
                           render={<Link href={child.href} />}
-                          isActive={pathname === child.href}
+                          isActive={isActiveUrl(child.href)}
                         >
                           <child.icon />
                           <span>{child.title}</span>

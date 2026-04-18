@@ -1,14 +1,15 @@
 import { createAuthClient } from "better-auth/react";
 
+const baseURL = process.env.NEXT_PUBLIC_APP_URL ||
+  (process.env.NODE_ENV === "production"
+    ? "https://rms-psi-six.vercel.app"
+    : undefined);
+
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://rms-psi-six.vercel.app"
-      : "http://localhost:3000"),
+  baseURL,
   sessionOptions: {
     refetchOnWindowFocus: false,
   },
 });
 
-// Export specific methods for convenience
 export const { signIn, signUp, useSession, signOut } = authClient;

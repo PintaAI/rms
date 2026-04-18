@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -78,73 +78,52 @@ function PricelistFormDialog({
   open,
   onOpenChange,
   pricelist,
-  tokoId,
-  onSuccess,
+  onSubmit,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pricelist?: InventoryPricelist | null;
-  tokoId: string;
-  onSuccess: () => void;
+  onSubmit: (data: { title: string; defaultPrice: number }) => Promise<{ success: boolean; error?: string }>;
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [defaultPrice, setDefaultPrice] = useState("");
 
-  const handleOpen = useCallback(() => {
-    if (pricelist) {
-      setTitle(pricelist.title);
-      setDefaultPrice(pricelist.defaultPrice.toString());
-    } else {
-      setTitle("");
-      setDefaultPrice("");
+  useEffect(() => {
+    if (open) {
+      if (pricelist) {
+        setTitle(pricelist.title);
+        setDefaultPrice(pricelist.defaultPrice.toString());
+      } else {
+        setTitle("");
+        setDefaultPrice("");
+      }
+      setError(null);
     }
-    setError(null);
-  }, [pricelist]);
-
-  useState(() => {
-    handleOpen();
-  });
+  }, [pricelist, open]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
-    try {
-      const price = parseInt(defaultPrice, 10);
-      if (isNaN(price) || price < 0) {
-        setError("Price must be a valid number");
-        setIsLoading(false);
-        return;
-      }
-
-      let result;
-      if (pricelist) {
-        result = await updateServicePricelist({
-          id: pricelist.id,
-          title,
-          defaultPrice: price,
-        });
-      } else {
-        result = await createServicePricelist({
-          title,
-          defaultPrice: price,
-          tokoId,
-        });
-      }
-
-      if (result.success) {
-        onSuccess();
-        onOpenChange(false);
-      } else {
-        setError(result.error || "Failed to save service pricelist");
-      }
-    } catch (err) {
-      setError("An error occurred");
-    } finally {
+    const price = parseInt(defaultPrice, 10);
+    if (isNaN(price) || price < 0) {
+      setError("Price must be a valid number");
       setIsLoading(false);
+      return;
+    }
+
+    onOpenChange(false);
+
+    const result = await onSubmit({ title, defaultPrice: price });
+
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || "Failed to save service pricelist");
+      onOpenChange(true);
     }
   }
 
@@ -209,13 +188,11 @@ function DeleteDialog({
   onOpenChange,
   title,
   onConfirm,
-  isLoading,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   onConfirm: () => void;
-  isLoading: boolean;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,12 +210,8 @@ function DeleteDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={isLoading}
-          >
-            {isLoading ? "Deleting..." : "Delete"}
+          <Button variant="destructive" onClick={onConfirm}>
+            Delete
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -255,8 +228,15 @@ export function InventoryOverview({
   const router = useRouter();
   const [spareparts, setSpareparts] = useState<SparepartWithCompatibilities[]>(initialSpareparts);
   const [pricelists, setPricelists] = useState<InventoryPricelist[]>(initialPricelists);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const pendingMutationsRef = useRef(0);
+
+  useEffect(() => {
+    if (pendingMutationsRef.current > 0) return;
+    setSpareparts(initialSpareparts);
+    setPricelists(initialPricelists);
+  }, [initialSpareparts, initialPricelists]);
 
   const [sparepartDialogOpen, setSparepartDialogOpen] = useState(false);
   const [editingSparepart, setEditingSparepart] = useState<SparepartWithCompatibilities | null>(null);
@@ -268,39 +248,116 @@ export function InventoryOverview({
     id: string;
     title: string;
   } | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const refreshData = useCallback(async () => {
-    setIsRefreshing(true);
-    router.refresh();
-    setIsRefreshing(false);
-  }, [router]);
-
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     if (!deleteTarget) return;
 
-    setIsDeleting(true);
-    try {
+    pendingMutationsRef.current += 1;
+
+    if (deleteTarget.type === "sparepart") {
+      setSpareparts(prev => prev.filter(s => s.id !== deleteTarget.id));
+    } else {
+      setPricelists(prev => prev.filter(p => p.id !== deleteTarget.id));
+    }
+
+    setDeleteDialogOpen(false);
+    setDeleteTarget(null);
+
+    const target = deleteTarget;
+
+    (async () => {
       let result;
-      if (deleteTarget.type === "sparepart") {
-        result = await deleteSparepart(deleteTarget.id);
+      if (target.type === "sparepart") {
+        result = await deleteSparepart(target.id);
       } else {
-        result = await deleteServicePricelist(deleteTarget.id);
+        result = await deleteServicePricelist(target.id);
       }
 
-      if (result.success) {
-        await refreshData();
-        setDeleteDialogOpen(false);
-        setDeleteTarget(null);
-      } else {
+      pendingMutationsRef.current -= 1;
+
+      if (!result.success) {
         setError(result.error || "Failed to delete");
+        router.refresh();
       }
-    } catch (err) {
-      setError("An error occurred");
-    } finally {
-      setIsDeleting(false);
-    }
-  }, [deleteTarget, refreshData]);
+    })();
+  }, [deleteTarget, router]);
+
+  const handlePricelistSubmit = useCallback(
+    async (data: { title: string; defaultPrice: number }) => {
+      pendingMutationsRef.current += 1;
+
+      if (editingPricelist) {
+        setPricelists(prev =>
+          prev.map(p =>
+            p.id === editingPricelist.id
+              ? { ...p, title: data.title, defaultPrice: data.defaultPrice }
+              : p
+          )
+        );
+
+        const result = await updateServicePricelist({
+          id: editingPricelist.id,
+          title: data.title,
+          defaultPrice: data.defaultPrice,
+        });
+
+        pendingMutationsRef.current -= 1;
+
+        if (!result.success) {
+          setError(result.error || "Failed to update");
+          router.refresh();
+        }
+
+        return result;
+      } else {
+        const tempId = `temp-${Date.now()}`;
+        setPricelists(prev => [
+          { id: tempId, title: data.title, defaultPrice: data.defaultPrice },
+          ...prev,
+        ]);
+
+        const result = await createServicePricelist({
+          title: data.title,
+          defaultPrice: data.defaultPrice,
+          tokoId,
+        });
+
+        pendingMutationsRef.current -= 1;
+
+        if (!result.success) {
+          setPricelists(prev => prev.filter(p => p.id !== tempId));
+          setError(result.error || "Failed to create");
+          router.refresh();
+        }
+
+        return result;
+      }
+    },
+    [editingPricelist, tokoId, router]
+  );
+
+  const handleSparepartSuccess = useCallback(
+    (newSparepart?: SparepartWithCompatibilities) => {
+      pendingMutationsRef.current += 1;
+
+      if (editingSparepart && newSparepart) {
+        setSpareparts(prev =>
+          prev.map(s =>
+            s.id === editingSparepart.id ? { ...s, ...newSparepart } : s
+          )
+        );
+      } else if (newSparepart) {
+        setSpareparts(prev => [newSparepart, ...prev]);
+      }
+
+      pendingMutationsRef.current -= 1;
+
+      if (!newSparepart) {
+        router.refresh();
+      }
+    },
+    [editingSparepart, router]
+  );
 
   const openSparepartDialog = (sparepart?: SparepartWithCompatibilities) => {
     setEditingSparepart(sparepart || null);
@@ -324,8 +381,12 @@ export function InventoryOverview({
           <h1 className="text-2xl font-bold">{tokoName} Inventory</h1>
           <p className="text-muted-foreground">Manage spareparts and service prices</p>
         </div>
-        <Button variant="outline" size="icon" onClick={refreshData} disabled={isRefreshing}>
-          <RiRefreshLine className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => router.refresh()}
+        >
+          <RiRefreshLine className="h-4 w-4" />
         </Button>
       </div>
 
@@ -367,51 +428,51 @@ export function InventoryOverview({
               ) : (
                 <Table>
                   <TableHeader>
-<TableRow>
-                       <TableHead>Name</TableHead>
-                       <TableHead>Default Price</TableHead>
-                       <TableHead>Stock</TableHead>
-                       <TableHead>Compatible Devices</TableHead>
-                       <TableHead className="text-right">Actions</TableHead>
-                     </TableRow>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Default Price</TableHead>
+                      <TableHead>Stock</TableHead>
+                      <TableHead>Compatible Devices</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
                   </TableHeader>
                   <TableBody>
                     {spareparts.map((sparepart) => (
-<TableRow key={sparepart.id}>
-                         <TableCell className="font-medium">
-                           <div className="flex items-center gap-2">
-                             {sparepart.name}
-                             {sparepart.isUniversal && (
-                               <Badge variant="secondary" className="text-xs">Universal</Badge>
-                             )}
-                           </div>
-                         </TableCell>
-                         <TableCell>{formatCurrency(sparepart.defaultPrice)}</TableCell>
-                         <TableCell>
-                           <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
-                             {sparepart.stock}
-                           </Badge>
-                         </TableCell>
-                         <TableCell>
-                           {sparepart.isUniversal ? (
-                             <span className="text-muted-foreground text-sm">All devices</span>
-                           ) : sparepart.compatibilities.length > 0 ? (
-                             <div className="flex flex-wrap gap-1">
-                               {sparepart.compatibilities.slice(0, 3).map((c) => (
-                                 <Badge key={c.hpCatalogId} variant="outline" className="text-xs">
-                                   {c.hpCatalog.brand.name} {c.hpCatalog.modelName}
-                                 </Badge>
-                               ))}
-                               {sparepart.compatibilities.length > 3 && (
-                                 <Badge variant="outline" className="text-xs">
-                                   +{sparepart.compatibilities.length - 3} more
-                                 </Badge>
-                               )}
-                             </div>
-                           ) : (
-                             <span className="text-muted-foreground text-sm">None</span>
-                           )}
-                         </TableCell>
+                      <TableRow key={sparepart.id}>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {sparepart.name}
+                            {sparepart.isUniversal && (
+                              <Badge variant="secondary" className="text-xs">Universal</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{formatCurrency(sparepart.defaultPrice)}</TableCell>
+                        <TableCell>
+                          <Badge variant={sparepart.stock > 0 ? "default" : "destructive"}>
+                            {sparepart.stock}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {sparepart.isUniversal ? (
+                            <span className="text-muted-foreground text-sm">All devices</span>
+                          ) : sparepart.compatibilities.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {sparepart.compatibilities.slice(0, 3).map((c) => (
+                                <Badge key={c.hpCatalogId} variant="outline" className="text-xs">
+                                  {c.hpCatalog.brand.name} {c.hpCatalog.modelName}
+                                </Badge>
+                              ))}
+                              {sparepart.compatibilities.length > 3 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{sparepart.compatibilities.length - 3} more
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">None</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
                             <Button
@@ -508,15 +569,14 @@ export function InventoryOverview({
         onOpenChange={setSparepartDialogOpen}
         sparepart={editingSparepart}
         tokoId={tokoId}
-        onSuccess={refreshData}
+        onSuccess={handleSparepartSuccess}
       />
 
       <PricelistFormDialog
         open={pricelistDialogOpen}
         onOpenChange={setPricelistDialogOpen}
         pricelist={editingPricelist}
-        tokoId={tokoId}
-        onSuccess={refreshData}
+        onSubmit={handlePricelistSubmit}
       />
 
       <DeleteDialog
@@ -524,7 +584,6 @@ export function InventoryOverview({
         onOpenChange={setDeleteDialogOpen}
         title={deleteTarget?.title || ""}
         onConfirm={handleDelete}
-        isLoading={isDeleting}
       />
     </div>
   );

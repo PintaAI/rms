@@ -11,10 +11,11 @@ import type { Toko } from "@/actions/toko";
 
 interface TokoCardProps {
   toko: Toko;
-  onSuccess?: () => void;
+  onSuccess?: (toko?: Toko) => void;
+  onDelete?: (tokoId: string) => void;
 }
 
-export function TokoCard({ toko, onSuccess }: TokoCardProps) {
+export function TokoCard({ toko, onSuccess, onDelete }: TokoCardProps) {
   const router = useRouter();
   const { setSelectedToko } = useToko();
   const [editSheetOpen, setEditSheetOpen] = useState(false);
@@ -120,6 +121,7 @@ export function TokoCard({ toko, onSuccess }: TokoCardProps) {
         open={editSheetOpen}
         onOpenChange={setEditSheetOpen}
         onSuccess={onSuccess}
+        onDelete={onDelete}
       />
     </>
   );

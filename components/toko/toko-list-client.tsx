@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { TokoCard } from "@/components/toko/toko-card";
 import { TokoDetailSheet } from "@/components/toko/toko-detail-sheet";
@@ -13,6 +13,7 @@ import {
   EmptyMedia,
 } from "@/components/ui/empty";
 import { RiAddLine, RiStore2Line } from "@remixicon/react";
+import { useToko } from "@/components/toko/toko-provider";
 import type { Toko } from "@/actions/toko";
 
 interface TokoListClientProps {
@@ -21,19 +22,58 @@ interface TokoListClientProps {
 
 export function TokoListClient({ tokoList }: TokoListClientProps) {
   const router = useRouter();
+  const { forceRefreshTokoList } = useToko();
+  const [tokos, setTokos] = useState<Toko[]>(tokoList);
   const [selectedTokoId, setSelectedTokoId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const pendingMutationsRef = useRef(0);
+
+  useEffect(() => {
+    if (pendingMutationsRef.current > 0) return;
+    setTokos(tokoList);
+  }, [tokoList]);
 
   function handleCreateClick() {
     setSelectedTokoId(null);
     setSheetOpen(true);
   }
 
-  function handleSuccess() {
+  function handleTokoSuccess(toko?: Toko) {
+    if (!toko) {
+      forceRefreshTokoList();
+      router.refresh();
+      return;
+    }
+
+    pendingMutationsRef.current += 1;
+
+    const isTemp = toko.id.startsWith("temp-");
+    const existingIndex = tokos.findIndex(t => t.id === toko.id);
+
+    if (existingIndex >= 0) {
+      setTokos(prev => prev.map(t => t.id === toko.id ? toko : t));
+    } else if (isTemp) {
+      setTokos(prev => [toko, ...prev]);
+    } else {
+      setTokos(prev => [toko, ...prev.filter(t => t.id.startsWith("temp-") !== true)]);
+    }
+
+    pendingMutationsRef.current -= 1;
+
+    if (!isTemp) {
+      forceRefreshTokoList();
+      router.refresh();
+    }
+  }
+
+  function handleTokoDelete(tokoId: string) {
+    setTokos(prev => prev.filter(t => t.id !== tokoId));
+    forceRefreshTokoList();
     router.refresh();
   }
 
-  if (tokoList.length === 0) {
+  if (tokos.length === 0) {
     return (
       <>
         <Empty className="border-2 border-dashed">
@@ -62,7 +102,8 @@ export function TokoListClient({ tokoList }: TokoListClientProps) {
           tokoId={selectedTokoId}
           open={sheetOpen}
           onOpenChange={setSheetOpen}
-          onSuccess={handleSuccess}
+          onSuccess={handleTokoSuccess}
+          onDelete={handleTokoDelete}
         />
       </>
     );
@@ -82,15 +123,16 @@ export function TokoListClient({ tokoList }: TokoListClientProps) {
             <span className="font-medium text-muted-foreground">Add New Toko</span>
           </CardContent>
         </Card>
-        {tokoList.map((toko) => (
-          <TokoCard key={toko.id} toko={toko} onSuccess={handleSuccess} />
+        {tokos.map((toko) => (
+          <TokoCard key={toko.id} toko={toko} onSuccess={handleTokoSuccess} onDelete={handleTokoDelete} />
         ))}
       </div>
       <TokoDetailSheet
         tokoId={selectedTokoId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
-        onSuccess={handleSuccess}
+        onSuccess={handleTokoSuccess}
+        onDelete={handleTokoDelete}
       />
     </>
   );

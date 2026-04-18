@@ -17,8 +17,12 @@ interface AdminPageProps {
 export default async function AdminPage({ searchParams }: AdminPageProps) {
   const user = await getAuthUser()
 
-  if (!user || user.tokoIds.length === 0) {
+  if (!user) {
     redirect("/auth")
+  }
+
+  if (user.tokoIds.length === 0) {
+    redirect("/dashboard/admin/toko")
   }
 
   const params = await searchParams

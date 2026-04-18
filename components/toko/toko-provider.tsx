@@ -1,23 +1,20 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from "react";
+import useSWR, { mutate } from "swr";
 import { useAuth } from "@/components/auth-provider";
 import { getAllToko, type Toko } from "@/actions/toko";
 
+type UserRole = "admin" | "staff" | "technician";
+
 interface TokoContextType {
-  // Current selected toko
   selectedToko: Toko | null;
-  // All available toko list (for admin, this is all toko; for staff/technician, this is their assigned toko)
   tokoList: Toko[];
-  // Loading state
   isLoading: boolean;
-  // Error state
   error: string | null;
-  // Set selected toko (only works for admin)
   setSelectedToko: (toko: Toko | null) => void;
-  // Refresh toko list
   refreshTokoList: () => Promise<void>;
-  // Check if user can switch toko (admin only)
+  forceRefreshTokoList: () => Promise<void>;
   canSwitchToko: boolean;
 }
 
@@ -28,114 +25,166 @@ const TokoContext = createContext<TokoContextType>({
   error: null,
   setSelectedToko: () => {},
   refreshTokoList: async () => {},
+  forceRefreshTokoList: async () => {},
   canSwitchToko: false,
 });
 
 const TOKO_STORAGE_KEY = "selected-toko-id";
+const TOKO_CACHE_KEY = "toko-cache";
+const SWR_KEY = "toko-list";
+const CACHE_DURATION_MS = 60 * 60 * 1000;
+
+interface TokoCache {
+  data: Toko[];
+  timestamp: number;
+  userId: string;
+}
+
+function getTokoCache(userId: string): TokoCache | null {
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(TOKO_CACHE_KEY);
+  if (!stored) return null;
+  try {
+    const cache: TokoCache = JSON.parse(stored);
+    if (cache.userId !== userId) {
+      localStorage.removeItem(TOKO_CACHE_KEY);
+      localStorage.removeItem(TOKO_STORAGE_KEY);
+      return null;
+    }
+    if (Date.now() - cache.timestamp < CACHE_DURATION_MS) {
+      return cache;
+    }
+    localStorage.removeItem(TOKO_CACHE_KEY);
+    return null;
+  } catch {
+    localStorage.removeItem(TOKO_CACHE_KEY);
+    localStorage.removeItem(TOKO_STORAGE_KEY);
+    return null;
+  }
+}
+
+function setTokoCache(data: Toko[], userId: string): void {
+  if (typeof window === "undefined") return;
+  const cache: TokoCache = { data, timestamp: Date.now(), userId };
+  localStorage.setItem(TOKO_CACHE_KEY, JSON.stringify(cache));
+}
+
+const fetcher = async (userId: string) => {
+  const result = await getAllToko();
+  if (!result.success || !result.data) {
+    throw new Error(result.error || "Failed to fetch toko list");
+  }
+  setTokoCache(result.data, userId);
+  return result.data;
+};
+
+function getLastFetchTime(userId: string): number {
+  if (typeof window === "undefined") return 0;
+  const stored = localStorage.getItem(TOKO_CACHE_KEY);
+  if (!stored) return 0;
+  try {
+    const cache: TokoCache = JSON.parse(stored);
+    if (cache.userId !== userId) return 0;
+    return cache.timestamp;
+  } catch {
+    return 0;
+  }
+}
+
+function isCacheValid(userId: string): boolean {
+  return Date.now() - getLastFetchTime(userId) < CACHE_DURATION_MS;
+}
 
 interface TokoProviderProps {
   children: ReactNode;
 }
 
+function getStoredTokoId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(TOKO_STORAGE_KEY);
+}
+
+function setStoredTokoId(id: string | null): void {
+  if (typeof window === "undefined") return;
+  if (id) {
+    localStorage.setItem(TOKO_STORAGE_KEY, id);
+  } else {
+    localStorage.removeItem(TOKO_STORAGE_KEY);
+  }
+}
+
 export function TokoProvider({ children }: TokoProviderProps) {
   const { session, isPending: isAuthPending } = useAuth();
-  const [tokoList, setTokoList] = useState<Toko[]>([]);
-  const [selectedToko, setSelectedTokoState] = useState<Toko | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const currentUserId = session?.user?.id || null;
+  const [manualSelectionId, setManualSelectionId] = useState<string | null>(() => getStoredTokoId());
+  const cachedTokoList = useMemo(() => {
+    if (!currentUserId) return undefined;
+    return getTokoCache(currentUserId)?.data || undefined;
+  }, [currentUserId]);
 
-  // Get user role from session
-  const userRole = (session?.user as any)?.role || null;
+  const userRole = (session?.user as { role?: UserRole })?.role || null;
   const isAdmin = userRole === "admin";
   const canSwitchToko = isAdmin;
 
-  // Fetch toko list
-  const fetchTokoList = useCallback(async () => {
-    if (isAuthPending) return;
-    
-    if (!session) {
-      setTokoList([]);
-      setSelectedTokoState(null);
-      setIsLoading(false);
+  const shouldFetch = !isAuthPending && session && currentUserId && !isCacheValid(currentUserId);
+  const { data: tokoList, error, isLoading, isValidating } = useSWR(
+    shouldFetch ? [SWR_KEY, currentUserId] : null,
+    ([_, userId]) => fetcher(userId),
+    {
+      dedupingInterval: 3600000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      fallbackData: cachedTokoList,
+    }
+  );
+
+  const selectedToko = useMemo(() => {
+    if (!tokoList || tokoList.length === 0) return null;
+
+    const selectedId = manualSelectionId;
+    if (selectedId) {
+      const found = tokoList.find((t) => t.id === selectedId);
+      if (found) return found;
+    }
+
+    return tokoList[0];
+  }, [tokoList, manualSelectionId]);
+
+  const setSelectedToko = useCallback(
+    (toko: Toko | null) => {
+      if (!canSwitchToko) return;
+      const newId = toko?.id || null;
+      setManualSelectionId(newId);
+      setStoredTokoId(newId);
+    },
+    [canSwitchToko]
+  );
+
+  const refreshTokoList = useCallback(async () => {
+    if (!currentUserId || isCacheValid(currentUserId)) {
       return;
     }
+    await mutate([SWR_KEY, currentUserId]);
+  }, [currentUserId]);
 
-    setIsLoading(true);
-    setError(null);
+  const forceRefreshTokoList = useCallback(async () => {
+    if (!currentUserId) return;
+    localStorage.removeItem(TOKO_CACHE_KEY);
+    await mutate([SWR_KEY, currentUserId]);
+  }, [currentUserId]);
 
-    try {
-      const result = await getAllToko();
-      
-      if (result.success && result.data) {
-        setTokoList(result.data);
-        
-        // For admin: try to restore previously selected toko from localStorage
-        // For staff/technician: auto-select their assigned toko
-        if (result.data.length > 0) {
-          if (isAdmin) {
-            // Admin can switch between toko
-            const storedTokoId = localStorage.getItem(TOKO_STORAGE_KEY);
-            const storedToko = storedTokoId 
-              ? result.data.find(t => t.id === storedTokoId) 
-              : null;
-            
-            // Use stored toko if it exists, otherwise use the first one
-            const tokoToSelect = storedToko || result.data[0];
-            setSelectedTokoState(tokoToSelect);
-            localStorage.setItem(TOKO_STORAGE_KEY, tokoToSelect.id);
-          } else {
-            // Non-admin users only have one toko (their assigned one)
-            setSelectedTokoState(result.data[0]);
-          }
-        } else {
-          setSelectedTokoState(null);
-        }
-      } else {
-        setError(result.error || "Failed to fetch toko list");
-        setTokoList([]);
-        setSelectedTokoState(null);
-      }
-    } catch (err) {
-      console.error("Error fetching toko list:", err);
-      setError("Failed to fetch toko list");
-      setTokoList([]);
-      setSelectedTokoState(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [session, isAuthPending, isAdmin]);
-
-  // Initial fetch and when session changes
-  useEffect(() => {
-    fetchTokoList();
-  }, [fetchTokoList]);
-
-  // Set selected toko (with localStorage persistence for admin)
-  const setSelectedToko = useCallback((toko: Toko | null) => {
-    if (!canSwitchToko) return;
-    
-    setSelectedTokoState(toko);
-    if (toko) {
-      localStorage.setItem(TOKO_STORAGE_KEY, toko.id);
-    } else {
-      localStorage.removeItem(TOKO_STORAGE_KEY);
-    }
-  }, [canSwitchToko]);
-
-  // Refresh toko list
-  const refreshTokoList = useCallback(async () => {
-    await fetchTokoList();
-  }, [fetchTokoList]);
+  const computedIsLoading = isLoading || isValidating || isAuthPending || !tokoList;
 
   return (
     <TokoContext.Provider
       value={{
         selectedToko,
-        tokoList,
-        isLoading,
-        error,
+        tokoList: tokoList || [],
+        isLoading: computedIsLoading,
+        error: error?.message || null,
         setSelectedToko,
         refreshTokoList,
+        forceRefreshTokoList,
         canSwitchToko,
       }}
     >
@@ -150,4 +199,10 @@ export function useToko() {
     throw new Error("useToko must be used within a TokoProvider");
   }
   return context;
+}
+
+export function clearTokoCacheOnSignIn(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(TOKO_CACHE_KEY);
+  localStorage.removeItem(TOKO_STORAGE_KEY);
 }

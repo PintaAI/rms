@@ -384,6 +384,172 @@ Before shipping optimistic UI, verify:
 
 ---
 
+## Form Dialog Pattern
+
+Form dialogs (create/edit) use a **simplified callback pattern** since they don't need to sync with parent props:
+
+### Callback Interface
+
+```tsx
+interface FormDialogProps {
+  // Optimistic callbacks (called BEFORE server request)
+  onOptimisticCreate?: (tempItem: Item) => void;
+  onOptimisticUpdate?: (updatedItem: Item) => void;
+  
+  // Success callback (called AFTER server success)
+  onSuccess: (realItem?: Item) => void;
+  
+  // Revert callbacks (called on server failure)
+  onRevertCreate?: () => void;
+  onRevertUpdate?: () => void;
+}
+```
+
+### Form Dialog Lifecycle
+
+```tsx
+async function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  
+  const tempItem = { id: `temp-${Date.now()}`, ...formData };
+  
+  // 1. Optimistic callback - parent applies state change
+  if (!isEditMode && onOptimisticCreate) {
+    onOptimisticCreate(tempItem);
+    onOpenChange(false);  // Close dialog immediately
+  }
+  
+  if (isEditMode && onOptimisticUpdate) {
+    onOptimisticUpdate(tempItem);
+    onOpenChange(false);
+  }
+  
+  // 2. Server request
+  const result = await createItem(formData);
+  
+  // 3. Handle result
+  if (result.success) {
+    onSuccess(result.data);  // Parent decrements mutation guard, refreshes
+  } else {
+    // Revert callback - parent restores previous state
+    if (!isEditMode && onRevertCreate) onRevertCreate();
+    if (isEditMode && onRevertUpdate) onRevertUpdate();
+    setError(result.error);
+  }
+}
+```
+
+### Parent Component Usage
+
+```tsx
+// Parent tracks mutations and applies optimistic state
+const pendingMutationsRef = useRef(0);
+const itemsRef = useRef(items);
+itemsRef.current = items;
+
+const handleOptimisticCreate = useCallback((tempItem: Item) => {
+  pendingMutationsRef.current += 1;
+  setItems(prev => [tempItem, ...prev]);
+}, []);
+
+const handleRevertCreate = useCallback(() => {
+  pendingMutationsRef.current -= 1;
+  setItems(itemsRef.current);  // Restore snapshot
+}, []);
+
+<FormDialog
+  onOptimisticCreate={handleOptimisticCreate}
+  onRevertCreate={handleRevertCreate}
+  onSuccess={() => {
+    pendingMutationsRef.current -= 1;
+    router.refresh();
+  }}
+/>
+```
+
+### Refs in Form Dialogs
+
+Use `useEffect` to update refs (not during render) to avoid React Compiler warnings:
+
+```tsx
+// ❌ BAD: Ref update during render
+const itemRef = useRef(item);
+itemRef.current = item;  // Error: Cannot update ref during render
+
+// ✅ GOOD: Ref update in effect
+const itemRef = useRef(item);
+useEffect(() => {
+  itemRef.current = item;
+}, [item]);
+```
+
+### Form Dialog Implementations
+
+| Component | Pattern |
+|-----------|---------|
+| `components/staff/services-form.tsx` | Create/update services |
+| `components/admin/sparepart-form-dialog.tsx` | Create/update spareparts |
+| `components/toko/toko-detail-sheet.tsx` | Create/update toko |
+
+---
+
+## Dashboard Overview Pattern
+
+Dashboard overview components (admin/staff) use the full pattern for list management:
+
+### Key Differences from Child Components
+
+1. **Local state instead of prop sync** - `services` state initialized from `initialServices`
+2. **Fingerprint for prop stability** - Prevents effect runs on object reference changes
+3. **Delete handler included** - Optimistic removal with revert on failure
+
+### Implementation
+
+```tsx
+const [services, setServices] = useState<ServiceTableItem[]>(initialServices);
+
+const pendingMutationsRef = useRef(0);
+const servicesRef = useRef(services);
+servicesRef.current = services;
+
+const servicesFingerprint = useMemo(
+  () => JSON.stringify(initialServices.map(s => s.id)),
+  [initialServices]
+);
+
+useEffect(() => {
+  if (pendingMutationsRef.current === 0) {
+    setServices(initialServices);
+  }
+}, [servicesFingerprint]);
+
+const handleDeleteService = useCallback(async () => {
+  const snapshot = servicesRef.current;
+  pendingMutationsRef.current += 1;
+  
+  setServices(prev => prev.filter(s => s.id !== serviceId));
+  
+  const result = await deleteService(serviceId);
+  
+  if (result.success) {
+    pendingMutationsRef.current -= 1;
+    router.refresh();
+  } else {
+    pendingMutationsRef.current -= 1;
+    setServices(snapshot);  // Revert
+  }
+}, [serviceId, router]);
+```
+
+### Dashboard Implementations
+
+| Component | Features |
+|-----------|----------|
+| `components/dashboard/admin-overview.tsx` | Full pattern with fingerprint, refs, delete handler |
+| `components/dashboard/staff-overview.tsx` | Full pattern with fingerprint, refs, delete handler |
+
+---
+
 ## Key Takeaways
 
 1. **Props are not reactive state** - They're snapshots from the parent. Use local state for optimistic updates.
@@ -396,9 +562,15 @@ Before shipping optimistic UI, verify:
 
 5. **Parent must sync** - After silent re-fetch, update any "selected" state that's passed to child components.
 
+6. **Update refs in effects** - Never update refs during render to avoid React Compiler warnings.
+
 ---
 
 ## Related Files
 
 - [`components/technician/service-task-card.tsx`](../components/technician/service-task-card.tsx) - Child component with optimistic updates
-- [`app/dashboard/technician/page.tsx`](../app/dashboard/technician/page.tsx) - Parent component with sync logic
+- [`components/dashboard/admin-overview.tsx`](../components/dashboard/admin-overview.tsx) - Dashboard with full pattern
+- [`components/dashboard/staff-overview.tsx`](../components/dashboard/staff-overview.tsx) - Dashboard with full pattern
+- [`components/staff/services-form.tsx`](../components/staff/services-form.tsx) - Form dialog with callbacks
+- [`components/admin/sparepart-form-dialog.tsx`](../components/admin/sparepart-form-dialog.tsx) - Form dialog with callbacks
+- [`components/toko/toko-detail-sheet.tsx`](../components/toko/toko-detail-sheet.tsx) - Form dialog with callbacks

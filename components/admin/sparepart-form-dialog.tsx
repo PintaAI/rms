@@ -1,6 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * SparepartFormDialog - Form dialog for creating/updating spareparts
+ *
+ * OPTIMISTIC UI ARCHITECTURE (follows dev-docs/optimistic-ui-guide.md):
+ *
+ * This form supports optimistic UI updates via callbacks:
+ *
+ * CREATE:
+ * - onOptimisticCreate(tempSparepart): Called BEFORE server request
+ * - onSuccess(realSparepart?): Called AFTER server success
+ * - onRevertCreate(): Called on failure to signal revert needed
+ *
+ * UPDATE:
+ * - onOptimisticUpdate(updatedSparepart): Called BEFORE server request
+ * - onSuccess(realSparepart?): Called AFTER server success
+ * - onRevertUpdate(): Called on failure to signal revert needed
+ *
+ * The parent component should:
+ * - Track pendingMutationsRef counter
+ * - Apply optimistic state on onOptimisticCreate/onOptimisticUpdate
+ * - Decrement counter and refresh on onSuccess
+ * - Revert state on onRevertCreate/onRevertUpdate
+ */
+
+import { useEffect, useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +48,11 @@ interface SparepartFormProps {
   onOpenChange: (open: boolean) => void;
   sparepart?: SparepartWithCompatibilities | null;
   tokoId: string;
-  onSuccess: () => void;
+  onOptimisticCreate?: (tempSparepart: SparepartWithCompatibilities) => void;
+  onOptimisticUpdate?: (updatedSparepart: SparepartWithCompatibilities) => void;
+  onRevertCreate?: () => void;
+  onRevertUpdate?: () => void;
+  onSuccess: (newSparepart?: SparepartWithCompatibilities) => void;
 }
 
 export function SparepartFormDialog({
@@ -32,6 +60,10 @@ export function SparepartFormDialog({
   onOpenChange,
   sparepart,
   tokoId,
+  onOptimisticCreate,
+  onOptimisticUpdate,
+  onRevertCreate,
+  onRevertUpdate,
   onSuccess,
 }: SparepartFormProps) {
   const [isLoading, setIsLoading] = useState(false);
@@ -42,27 +74,44 @@ export function SparepartFormDialog({
   const [isUniversal, setIsUniversal] = useState(false);
   const [selectedDevices, setSelectedDevices] = useState<HpCatalogOption[]>([]);
 
+  const sparepartRef = useRef(sparepart);
+
   useEffect(() => {
-    if (sparepart) {
-      setName(sparepart.name);
-      setDefaultPrice(sparepart.defaultPrice.toString());
-      setStock(sparepart.stock.toString());
-      setIsUniversal(sparepart.isUniversal);
-      setSelectedDevices(
-        sparepart.compatibilities.map((c) => ({
-          id: c.hpCatalog.id,
-          modelName: c.hpCatalog.modelName,
-          brandName: c.hpCatalog.brand.name,
-        }))
-      );
-    } else {
-      setName("");
-      setDefaultPrice("");
-      setStock("");
-      setIsUniversal(false);
-      setSelectedDevices([]);
+    sparepartRef.current = sparepart;
+  }, [sparepart]);
+
+  const lastSubmitRef = useRef<{
+    name: string;
+    defaultPrice: number;
+    stock: number;
+    isUniversal: boolean;
+    hpCatalogIds: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      if (sparepart) {
+        setName(sparepart.name);
+        setDefaultPrice(sparepart.defaultPrice.toString());
+        setStock(sparepart.stock.toString());
+        setIsUniversal(sparepart.isUniversal);
+        setSelectedDevices(
+          sparepart.compatibilities.map((c) => ({
+            id: c.hpCatalog.id,
+            modelName: c.hpCatalog.modelName,
+            brandName: c.hpCatalog.brand.name,
+          }))
+        );
+      } else {
+        setName("");
+        setDefaultPrice("");
+        setStock("");
+        setIsUniversal(false);
+        setSelectedDevices([]);
+      }
+      setError(null);
+      lastSubmitRef.current = null;
     }
-    setError(null);
   }, [sparepart, open]);
 
   useEffect(() => {
@@ -73,58 +122,104 @@ export function SparepartFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
 
-    try {
-      const price = parseInt(defaultPrice, 10);
-      if (isNaN(price) || price < 0) {
-        setError("Price must be a valid number");
-        setIsLoading(false);
-        return;
+    const price = parseInt(defaultPrice, 10);
+    if (isNaN(price) || price < 0) {
+      setError("Price must be a valid number");
+      return;
+    }
+
+    const stockValue = parseInt(stock, 10);
+    if (isNaN(stockValue) || stockValue < 0) {
+      setError("Stock must be a valid number");
+      return;
+    }
+
+    const hpCatalogIds = selectedDevices.map((d) => d.id);
+    const finalIsUniversal = hpCatalogIds.length === 0 ? true : isUniversal;
+
+    lastSubmitRef.current = {
+      name,
+      defaultPrice: price,
+      stock: stockValue,
+      isUniversal: finalIsUniversal,
+      hpCatalogIds,
+    };
+
+    const optimisticSparepart: SparepartWithCompatibilities = {
+      id: sparepart?.id || `temp-${Date.now()}`,
+      name,
+      defaultPrice: price,
+      stock: stockValue,
+      isUniversal: finalIsUniversal,
+      tokoId,
+      compatibilities: selectedDevices.map((d) => ({
+        hpCatalogId: d.id,
+        sparepartId: sparepart?.id || `temp-${Date.now()}`,
+        hpCatalog: {
+          id: d.id,
+          modelName: d.modelName,
+          brand: { id: "", name: d.brandName },
+        },
+      })),
+    };
+
+    const isEditMode = sparepartRef.current;
+
+    if (!isEditMode && onOptimisticCreate) {
+      onOptimisticCreate(optimisticSparepart);
+      onOpenChange(false);
+    }
+
+    if (isEditMode && onOptimisticUpdate) {
+      onOptimisticUpdate(optimisticSparepart);
+      onOpenChange(false);
+    }
+
+    if (!onOptimisticCreate && !onOptimisticUpdate) {
+      onSuccess(optimisticSparepart);
+      onOpenChange(false);
+    }
+
+    setIsLoading(true);
+
+    let result;
+    if (sparepartRef.current) {
+      result = await updateSparepart({
+        id: sparepartRef.current.id,
+        name,
+        defaultPrice: price,
+        stock: stockValue,
+        isUniversal: finalIsUniversal,
+        hpCatalogIds,
+      });
+    } else {
+      result = await createSparepart({
+        name,
+        defaultPrice: price,
+        stock: stockValue,
+        isUniversal: finalIsUniversal,
+        tokoId,
+        hpCatalogIds,
+      });
+    }
+
+    setIsLoading(false);
+
+    if (!result.success) {
+      setError(result.error || "Failed to save sparepart");
+      if (!sparepartRef.current && onRevertCreate) {
+        onRevertCreate();
       }
-
-      const stockValue = parseInt(stock, 10);
-      if (isNaN(stockValue) || stockValue < 0) {
-        setError("Stock must be a valid number");
-        setIsLoading(false);
-        return;
+      if (sparepartRef.current && onRevertUpdate) {
+        onRevertUpdate();
       }
-
-      const hpCatalogIds = selectedDevices.map((d) => d.id);
-      const finalIsUniversal = hpCatalogIds.length === 0 ? true : isUniversal;
-
-      let result;
-      if (sparepart) {
-        result = await updateSparepart({
-          id: sparepart.id,
-          name,
-          defaultPrice: price,
-          stock: stockValue,
-          isUniversal: finalIsUniversal,
-          hpCatalogIds,
-        });
-      } else {
-        result = await createSparepart({
-          name,
-          defaultPrice: price,
-          stock: stockValue,
-          isUniversal: finalIsUniversal,
-          tokoId,
-          hpCatalogIds,
-        });
-      }
-
-      if (result.success) {
+      if (!onRevertCreate && !onRevertUpdate) {
         onSuccess();
-        onOpenChange(false);
-      } else {
-        setError(result.error || "Failed to save sparepart");
       }
-    } catch (err) {
-      setError("An error occurred");
-    } finally {
-      setIsLoading(false);
+    } else if (result.data) {
+      onSuccess(result.data);
     }
   }
 

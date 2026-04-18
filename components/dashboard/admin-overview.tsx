@@ -1,6 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition, useRef } from "react";
+/**
+ * AdminOverview - Admin dashboard with optimistic UI updates
+ *
+ * OPTIMISTIC UI ARCHITECTURE (follows dev-docs/optimistic-ui-guide.md):
+ *
+ * 1. Local state - `services` holds optimistic copy, synced from `initialServices`
+ * 2. Mutation guard - `pendingMutationsRef` blocks sync during mutations
+ * 3. Refs for latest values - `servicesRef` for async callbacks
+ * 4. Fingerprint - Stable identity for `initialServices` prop
+ *
+ * MUTATION LIFECYCLE:
+ * - Before: pendingMutationsRef += 1, apply optimistic update
+ * - Success: pendingMutationsRef -= 1, router.refresh() (silent re-fetch)
+ * - Failure: pendingMutationsRef -= 1, router.refresh() to revert
+ *
+ * This pattern ensures:
+ * - Instant visual feedback on user actions
+ * - No race conditions between optimistic updates and server data
+ * - Proper cleanup even on failure
+ */
+
+import { useCallback, useEffect, useState, useTransition, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToko } from "@/components/toko/toko-provider";
 import {
@@ -168,7 +189,7 @@ export function AdminOverview({
   pagination,
   dashboardStats: initialDashboardStats,
 }: AdminOverviewProps) {
-  const { selectedToko } = useToko();
+  const { selectedToko, isLoading: tokoLoading } = useToko();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -180,18 +201,26 @@ export function AdminOverview({
   const [timeFilter, setTimeFilter] = useState<"daily" | "weekly" | "monthly" | "all">(
     initialTimeFilter
   );
-  
-  // Track pending mutations to prevent useEffect from overwriting optimistic state
+
   const pendingMutationsRef = useRef(0);
 
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
+
+  const initialServicesRef = useRef(initialServices);
+  initialServicesRef.current = initialServices;
+
+  const servicesFingerprint = useMemo(
+    () => JSON.stringify(initialServices.map(s => s.id)),
+    [initialServices]
+  );
+
   useEffect(() => {
-    // Skip sync if there are pending mutations (optimistic updates in progress)
-    if (pendingMutationsRef.current > 0) {
-      pendingMutationsRef.current -= 1;
-      return;
+    if (pendingMutationsRef.current === 0) {
+      setServices(initialServices);
     }
-    setServices(initialServices);
-  }, [initialServices]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servicesFingerprint]);
 
   useEffect(() => {
     setTimeFilter(initialTimeFilter);
@@ -248,48 +277,52 @@ export function AdminOverview({
   // Handle delete service with optimistic update
   const handleDeleteService = useCallback(async () => {
     if (!deletingService) return;
-    
+
     const serviceId = deletingService.id;
-    
-    // Track pending mutation
+    const snapshot = servicesRef.current;
+
     pendingMutationsRef.current += 1;
-    
-    // Optimistic update - remove from local state immediately
+
     setServices(prev => prev.filter(s => s.id !== serviceId));
     setDeletingService(null);
-    
+
     setIsDeleting(true);
     const result = await deleteService(serviceId);
     setIsDeleting(false);
-    
-    if (!result.success) {
-      // Revert on failure - decrement counter and refresh
+
+    if (result.success) {
       pendingMutationsRef.current -= 1;
-      console.error("Failed to delete service:", result.error);
       router.refresh();
+    } else {
+      pendingMutationsRef.current -= 1;
+      setServices(snapshot);
+      console.error("Failed to delete service:", result.error);
     }
   }, [deletingService, router]);
 
-  // Handle optimistic create - add service immediately to local state
   const handleOptimisticCreate = useCallback((tempService: ServiceTableItem) => {
     pendingMutationsRef.current += 1;
     setServices(prev => [tempService, ...prev]);
   }, []);
 
-  // Handle optimistic update - update service immediately in local state
   const handleOptimisticUpdate = useCallback((updatedService: ServiceTableItem) => {
     pendingMutationsRef.current += 1;
-    setServices(prev => prev.map(s => 
+    setServices(prev => prev.map(s =>
       s.id === updatedService.id ? updatedService : s
     ));
   }, []);
 
-  // Handle revert create - remove temp service on failure
   const handleRevertCreate = useCallback((tempId: string) => {
     pendingMutationsRef.current -= 1;
     setServices(prev => prev.filter(s => s.id !== tempId));
-    router.refresh();
-  }, [router]);
+  }, []);
+
+  const handleRevertUpdate = useCallback((originalService: ServiceTableItem) => {
+    pendingMutationsRef.current -= 1;
+    setServices(prev => prev.map(s =>
+      s.id === originalService.id ? originalService : s
+    ));
+  }, []);
 
   // Handle page change
   const handlePageChange = (newPage: number) => {
@@ -338,6 +371,17 @@ export function AdminOverview({
       title: "No Services Yet",
       message: "Click 'New Service' to add your first service request",
     });
+  }
+
+  // Loading state
+  if (tokoLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[50vh] text-center">
+        <div className="h-16 w-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <h2 className="text-xl font-semibold">Loading toko data...</h2>
+        <p className="text-sm text-muted-foreground mt-2">Fetching your store information</p>
+      </div>
+    );
   }
 
   // No toko selected
@@ -497,13 +541,15 @@ export function AdminOverview({
         }}
         onSuccess={() => {
           setEditingService(null);
-          // Don't refresh - optimistic state is already correct
+          pendingMutationsRef.current -= 1;
+          router.refresh();
         }}
         editData={editingService}
         tokoId={selectedToko?.id}
         onOptimisticCreate={handleOptimisticCreate}
         onOptimisticUpdate={handleOptimisticUpdate}
         onRevertCreate={handleRevertCreate}
+        onRevertUpdate={handleRevertUpdate}
       />
 
       {/* Recent Services with Notifications */}
